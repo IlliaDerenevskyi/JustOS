@@ -316,8 +316,41 @@ Renderer
 Lower layers must never call higher layers.
 
 ---
+## Rule 24. Every Stable Milestone Must Be Tagged
 
-# Rule 24 — Milestone Completion Policy
+Every significant project state must be marked with an annotated Git tag.
+
+Tags represent immutable checkpoints in the project's history and allow any contributor to restore a known-good version at any time.
+
+Tag naming convention:
+
+- v0.0.x — Documentation / Repository bootstrap
+- v0.x.0 — Completed milestones
+- v1.0.0 — First public release
+- Semantic Versioning afterwards
+
+Every tag must include:
+
+- Version number
+- Short description
+- Summary of completed work
+
+Example:
+
+v0.0.2
+
+Initial project documentation
+
+- README
+- Rules
+- Overview
+- Architecture skeleton
+
+Whenever possible, every tag should also have a corresponding GitHub Release containing the same information.
+
+Tags must never be moved or rewritten after publication.
+---
+# Rule 25 — Milestone Completion Policy
 
 A milestone is considered complete only if all conditions are met:
 
