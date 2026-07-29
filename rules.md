@@ -358,5 +358,7 @@ A milestone is considered complete only if all conditions are met:
 - Project builds successfully
 - All tests pass
 - Documentation updated
+- Git tag created
+- GitHub Release published (if applicable)
 
 Until then, the milestone remains unfinished.
