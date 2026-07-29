@@ -1,0 +1,28 @@
+# Build
+build/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+compile_commands.json
+
+# Objects
+*.o
+*.a
+*.so
+
+# Editors
+*.swp
+*~
+
+# VSCode
+.vscode/
+
+# CLion
+.idea/
+
+# Env
+.env
+
+# Logs
+*.log
