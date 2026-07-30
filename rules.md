@@ -362,3 +362,17 @@ A milestone is considered complete only if all conditions are met:
 - GitHub Release published (if applicable)
 
 Until then, the milestone remains unfinished.
+
+---
+# Rule 26 — Documentation drives implementation
+Implementation never comes first.
+
+For every module:
+
+1. Update documentation.
+2. Define public API.
+3. Write tests.
+4. Implement.
+5. Refactor.
+
+If the documentation is not updated, the code must not be written.
