@@ -20,15 +20,15 @@ Code that violates these rules must not be merged.
 Every public function must start with:
 
 
-j_
+jp_
 
 
 Example:
 
 
-j_window_create()
-j_window_destroy()
-j_workspace_switch()
+jp_window_create()
+jp_window_destroy()
+jp_workspace_switch()
 
 
 Private helpers must be declared static.
@@ -364,7 +364,45 @@ A milestone is considered complete only if all conditions are met:
 Until then, the milestone remains unfinished.
 
 ---
-# Rule 26 — Documentation drives implementation
+### Rule 26 — Stage Verification Workflow
+
+A development stage is **not considered complete** until it has passed architectural review.
+
+The required workflow is:
+
+1. Complete the implementation of the current Stage.
+2. Generate:
+   - a `git diff` containing all changes made during the Stage;
+   - a short **Stage Report** describing:
+     - completed tasks;
+     - modified modules;
+     - known limitations (if any).
+3. Submit the following to the Architecture Review chat:
+   - `git diff`;
+   - Stage Report;
+   - the corresponding milestone documentation.
+4. The Architecture Review must verify:
+   - compliance with the milestone documentation;
+   - implementation completeness;
+   - architectural consistency;
+   - coding standards;
+   - unnecessary or redundant code;
+   - missing modules or functionality.
+5. Address all review comments.
+6. Only after all issues have been resolved may the developer execute:
+   ```bash
+   git add .
+   git commit -m "<message>"
+   ```
+7. A Stage is considered finished **only after the commit has been created following a successful architectural review**.
+
+**Important:**
+
+- Never commit unfinished or unreviewed stages.
+- `git diff` must represent the complete set of changes made during the current Stage.
+- Documentation is the single source of truth; implementation must always follow it.
+---
+# Rule 27 — Documentation drives implementation
 Implementation never comes first.
 
 For every module:
