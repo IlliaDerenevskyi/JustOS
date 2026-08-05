@@ -316,7 +316,7 @@ Renderer
 Lower layers must never call higher layers.
 
 ---
-## Rule 24. Every Stable Milestone Must Be Tagged
+# Rule 24. Every Stable Milestone Must Be Tagged
 
 Every significant project state must be marked with an annotated Git tag.
 
@@ -364,7 +364,7 @@ A milestone is considered complete only if all conditions are met:
 Until then, the milestone remains unfinished.
 
 ---
-### Rule 26 — Stage Verification Workflow
+# Rule 26 — Stage Verification Workflow
 
 A development stage is **not considered complete** until it has passed architectural review.
 
@@ -402,7 +402,47 @@ The required workflow is:
 - `git diff` must represent the complete set of changes made during the current Stage.
 - Documentation is the single source of truth; implementation must always follow it.
 ---
-# Rule 27 — Documentation drives implementation
+# Rule 27 — Documentation Is the Source of Truth
+
+Engineering documentation is the authoritative source of truth.
+
+Architecture, interfaces, algorithms, data structures and engineering decisions are defined in documentation before implementation begins.
+
+Source code exists to realize those specifications.
+
+Implementation must remain consistent with the documented engineering design.
+
+Whenever code and documentation diverge, the inconsistency is treated as an engineering defect rather than a documentation issue.
+---
+# Rule 28 — Every engineering artifact must be fully reconstructible from its specification.
+
+Every subsystem specification shall contain sufficient engineering information to reconstruct its public interface, internal architecture and implementation without relying on the original source code.
+
+Engineering documentation exists to preserve architectural knowledge independently of implementation.
+
+Loss of source code must never imply loss of engineering knowledge.
+---
+# Rule 29 — Dependency Completeness
+
+Every dependency introduced by a milestone shall already exist as both engineering documentation and source code before the dependent milestone may begin implementation.
+
+A milestone may only depend on components that are fully defined and implemented.
+
+For every dependency:
+
+the corresponding milestone specification shall exist;
+the component shall be completely documented;
+all public interfaces shall be specified;
+the source code shall exist;
+the implementation shall satisfy the documented engineering specification.
+
+Undocumented or unimplemented dependencies are prohibited.
+
+This guarantees that every referenced file, subsystem or component has a single authoritative engineering definition and an existing implementation.
+
+No milestone may reference engineering components that do not yet exist.
+---
+# Rule 30 — Documentation drives implementation
 Implementation never comes first.
 
 For every module:
@@ -414,3 +454,4 @@ For every module:
 5. Refactor.
 
 If the documentation is not updated, the code must not be written.
+

@@ -8,43 +8,124 @@
 
 ---
 
-# Milestone 0 — Boot Infrastructure
+# Milestone 0
 
 ## Boot Manager
 
-### Boot Manager Core
+### UEFI Boot
 
-- Bootloader
+- UEFI Entry
+- Boot Services
+- Runtime Services
+- Firmware Interface
+
+### Boot Manager
+
+- Boot Flow
 - Boot Configuration
-- Boot Menu
-- Recovery Entry
+- Boot Parameters
+- Boot Selection
 
-### Kernel Loading
+### Kernel Loader
 
 - ELF Loader
-- Kernel Validation
+- Segment Mapping
+- Relocation
+- Entry Point Resolution
+
+### BootInfo
+
+- Memory Information
+- Framebuffer Information
+- CPU Information
 - Boot Parameters
-- Boot Handoff
 
-### Boot Information
+### Memory Map
 
-- BootInfo
-- Memory Map
-- Framebuffer
+- Memory Detection
+- Memory Classification
+- Reserved Regions
+- Available Memory
+
+### Framebuffer
+
 - Video Mode
+- Resolution
+- Pixel Format
+- Framebuffer Mapping
 
-### Platform Initialization
+### Kernel Handoff
 
-- CPU Initialization
-- Paging
-- Early Stack
-- Early Heap
+- CPU State Preparation
+- Stack Setup
+- BootInfo Transfer
+- Kernel Entry
 
-### Boot Diagnostics
+---
 
-- Boot Logging
-- Error Reporting
-- Recovery Support
+## Platform Initialization
+
+### CPU Initialization
+
+- Feature Detection
+- CPU State
+- Architecture Setup
+
+### Early Paging
+
+- Identity Mapping
+- Page Tables
+- Virtual Memory Foundation
+
+### Early Stack
+
+- Kernel Stack
+- Stack Initialization
+
+### Early Heap
+
+- Bootstrap Allocator
+- Early Memory Allocation
+
+### Memory Validation
+
+- Memory Verification
+- Reserved Region Validation
+- Mapping Validation
+
+### ELF Mapping
+
+- ELF Parsing
+- Segment Permissions
+- Runtime Mapping
+
+---
+
+## Boot Diagnostics
+
+### Boot Logging
+
+- Boot Events
+- Initialization Progress
+- Diagnostic Output
+
+### Error Reporting
+
+- Error Codes
+- Failure Context
+- Diagnostic Information
+
+### Panic Screen
+
+- Panic Handler
+- Error Display
+- Debug Information
+
+### Recovery Entry
+
+- Recovery Trigger
+- Fallback Entry
+- Emergency Boot
 
 ---
 

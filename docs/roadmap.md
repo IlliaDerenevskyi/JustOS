@@ -39,7 +39,7 @@ Create a complete and reliable boot infrastructure capable of initializing the J
 
 After completing this milestone the engineering system is able to:
 
-- boot directly from supported storage devices;
+- boot through supported firmware interfaces;
 - load the Just kernel;
 - initialize the execution environment;
 - provide memory information;
@@ -71,8 +71,7 @@ Platform-specific boot technologies may evolve independently from the engineerin
 - Memory Map
 - Framebuffer Initialization
 - Boot Configuration
-- Live Boot Support
-- Recovery Mode
+- Recovery entry
 - Boot Diagnostics
 
 ---
