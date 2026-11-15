@@ -240,15 +240,34 @@ Warnings are treated as bugs.
 
 # Rule 19 - Git Workflow
 
-main must always build.
+main must always build and contains only completed milestones and
+documentation-only states.
 
-Feature development happens in dedicated branches.
+Branches:
 
-Example:
+- main: completed milestones and documentation-only states. Every one of
+  them is tagged (Rule 24).
+- develop: the working branch. It holds the work in progress of the
+  current stage. Every push is checked by CI (Rule 42).
+- feature/milestone<N> (for example feature/milestone0): the branch of one
+  milestone. It receives only stages that passed review (Rule 26). It is
+  created from main when the milestone starts, after the milestone has
+  been created on GitHub (Rule 41).
 
+Flow:
 
-feature/window-manager
+1. Work happens in develop.
+2. When a stage is ready, the diff between feature/milestone<N> and develop
+   and the Stage Report go to the architecture review (Rule 26).
+3. After the review the stage enters feature/milestone<N> as one commit
+   (squash merge). CI must pass.
+4. develop is then brought up to date with feature/milestone<N>.
+5. When the milestone is complete (Rule 25), feature/milestone<N> is merged
+   into main, the tag is created, and the release is published. develop is
+   then brought up to date with main.
 
+Documentation-only states (tags v0.0.x, Rule 24) go from develop directly
+to main.
 
 Merge only after successful build and tests.
 
@@ -372,7 +391,8 @@ The required workflow is:
 
 1. Complete the implementation of the current Stage.
 2. Generate:
-   - a `git diff` containing all changes made during the Stage;
+   - a `git diff` containing all changes made during the Stage (the
+     difference between `feature/milestone<N>` and `develop`);
    - a short **Stage Report** describing:
      - completed tasks;
      - modified modules;
@@ -389,16 +409,18 @@ The required workflow is:
    - unnecessary or redundant code;
    - missing modules or functionality.
 5. Address all review comments.
-6. Only after all issues have been resolved may the developer execute:
+6. Only after all issues have been resolved may the developer put the
+   Stage into the milestone branch as one commit:
    ```bash
-   git add .
+   git switch feature/milestone<N>
+   git merge --squash develop
    git commit -m "<message>"
    ```
-7. A Stage is considered finished **only after the commit has been created following a successful architectural review**.
+7. A Stage is considered finished **only after the commit has been created in the milestone branch following a successful architectural review**.
 
 **Important:**
 
-- Never commit unfinished or unreviewed stages.
+- Never commit unfinished or unreviewed stages to a milestone branch or to main. Working commits in develop are allowed.
 - `git diff` must represent the complete set of changes made during the current Stage.
 - Documentation is the single source of truth; implementation must always follow it.
 ---
