@@ -1,0 +1,35 @@
+name: CI
+
+# Runs after every push to any branch (Rule 42 of rules.md).
+on:
+  push:
+    branches:
+      - '**'
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: build and test (${{ matrix.compiler }})
+    runs-on: ubuntu-latest
+    strategy:
+      # A failure with one compiler must not hide the result of the other.
+      fail-fast: false
+      matrix:
+        compiler: [gcc, clang]
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Check that there is source code to build
+        id: sources
+        run: ci/check_sources.sh
+
+      - name: Build and test
+        if: steps.sources.outputs.has_sources == 'true'
+        run: ci/build_and_test.sh ${{ matrix.compiler }}
+
+      - name: Report that build and test were skipped
+        if: steps.sources.outputs.has_sources != 'true'
+        run: echo "::notice::Build and test skipped, because none of the source files listed in CMakeLists.txt exist yet."
