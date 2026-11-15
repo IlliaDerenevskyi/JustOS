@@ -2,7 +2,7 @@
 
 Read in this order:
 
-1. engineering_context.md
+1. engineering_context_architecture.md/engineering_context_code.md
 
 2. rules.md
 

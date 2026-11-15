@@ -53,7 +53,7 @@ The boot process must remain predictable, reproducible and architecture-independ
 
 The purpose of the Boot System is to create a reliable and deterministic transition between firmware and the Just kernel.
 
-During startup it discovers the execution environment, initializes essential boot services, validates the selected kernel image and constructs the BootInfo structure passed to the operating system.
+During startup it discovers the execution environment, initializes essential boot services, validates the selected kernel image and prepares the normalized `JPBootContext` and `JPHandoffInfo` transfer contract passed to Stage 2.
 
 The boot system never performs responsibilities belonging to the kernel.
 
@@ -97,7 +97,7 @@ Boot Manager
  │
  ├── Security Checks
  │
- ├── BootInfo Builder
+ ├── Boot Security
  │
  └── Kernel Loader
         │
@@ -151,7 +151,7 @@ Memory Discovery
 Framebuffer Initialization
       │
       ▼
-BootInfo Builder
+Boot Security and Handoff State
       │
       ▼
 Kernel Handoff
@@ -203,7 +203,7 @@ Memory discovered
 Framebuffer initialized
       │
       ▼
-BootInfo created
+Normalized handoff state prepared
       │
       ▼
 CPU state prepared
@@ -266,11 +266,11 @@ It is not intended to become a pre-operating-system shell.
 Example layout:
 
 ```text
-+------------------------------------------------------+
-|                  Just Boot Manager                   |
-+------------------------------------------------------+
++------------------------------------------------------------+
+|                  Just Boot Manager                         |
++------------------------------------------------------------+
 
- [ General ] [ Kernel ] [ Theme ] [ AI ] [ Recovery ]
+ [ General ] [ Kernel ] [ Theme ] [ AI ] [ Recovery ] [info]
 
 --------------------------------------------------------
 
@@ -442,7 +442,7 @@ Users may modify supported options through the Boot Manager interface before sta
 
 After the kernel receives control, the boot configuration becomes read-only.
 
-The kernel consumes the configuration through the BootInfo structure rather than interacting with the Boot Manager directly.
+The kernel consumes the configuration through the normalized Stage 1 to Stage 2 handoff contract rather than interacting with the Boot Manager directly. `JPBootInfo` is not part of Stage 1 or Stage 2.
 
 ---
 
@@ -522,7 +522,7 @@ Classify Memory Types
 Create Memory Map
            │
            ▼
-Store in BootInfo
+Store in normalized handoff state
 ```
 
 The resulting memory map describes every known physical memory region.
@@ -590,18 +590,28 @@ The framebuffer remains available to the kernel immediately after startup, allow
 
 # BootInfo
 
-BootInfo is the engineering contract between the Boot Manager and the Just kernel.
+The generic term `BootInfo` must not be used ambiguously. The authoritative Stage 1 to Stage 2 contract is:
 
-It represents the complete description of the execution environment prepared during startup.
+```text
+JPBootContext
+      +
+JPHandoffInfo
+      +
+explicit ownership-transfer state
+```
 
-The Boot Manager constructs BootInfo exactly once.
+`JPBootInfo` is not part of Stage 1 or Stage 2. A later kernel-facing `BootInfo` object may be introduced only as a separate structure with an explicitly defined producer, consumer, ABI, ownership, lifetime, conversion source, and stage boundary.
 
-After kernel handoff, BootInfo becomes the authoritative source describing the boot environment.
+The normalized handoff contract represents the execution environment prepared during startup.
+
+The Boot Manager and platform provider construct the normalized handoff state according to their Stage 1 responsibilities.
+
+After kernel handoff, `JPBootContext` and `JPHandoffInfo` remain authoritative for the Stage 2 initialization lifetime defined by Milestone 0.
 
 A typical BootInfo structure contains information such as:
 
 ```text
-BootInfo
+Normalized Handoff State
 
 ├── Firmware Information
 ├── Boot Configuration
@@ -619,9 +629,9 @@ Each field represents a distinct engineering responsibility.
 
 No subsystem maintains duplicate copies of the same information.
 
-The kernel consumes BootInfo during its initialization phase and distributes relevant information to the appropriate kernel subsystems.
+The kernel consumes the normalized handoff state during Stage 2 initialization and distributes relevant information to the appropriate kernel subsystems.
 
-BootInfo exists only to transfer startup information.
+The handoff state exists only to transfer startup information.
 
 It never becomes a long-term system database.
 
@@ -644,7 +654,7 @@ Boot Manager
 Finalize Diagnostics
       │
       ▼
-Finalize BootInfo
+Finalize JPBootContext and JPHandoffInfo
       │
       ▼
 Release Boot Resources
@@ -656,7 +666,7 @@ Prepare CPU State
 Prepare Initial Stack
       │
       ▼
-Pass BootInfo
+Transfer normalized handoff state
       │
       ▼
 Jump to Kernel Entry Point
@@ -668,7 +678,7 @@ Just Kernel
 Before transferring execution, the Boot Manager ensures that:
 
 - the kernel image has been validated;
-- BootInfo has been completed;
+- the normalized handoff state has been completed;
 - the execution environment is consistent;
 - the processor state is prepared;
 - the initial execution stack is available.
@@ -752,7 +762,7 @@ Typical diagnostic events include:
 - kernel validation;
 - memory discovery;
 - framebuffer initialization;
-- BootInfo creation;
+- normalized handoff-state creation;
 - kernel handoff;
 - recovery entry;
 - fatal errors.
@@ -833,7 +843,7 @@ No document duplicates responsibilities belonging to another.
 After Boot Manager finishes:
 
 - kernel integrity has been verified;
-- BootInfo is complete;
+- normalized handoff state is complete;
 - memory map is validated;
 - framebuffer is initialized;
 - execution context is deterministic;
