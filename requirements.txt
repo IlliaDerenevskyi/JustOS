@@ -1,0 +1,81 @@
+# JustOS: what to install before starting work.
+#
+# This is NOT a pip file. It is a plain list of system packages. Each line
+# below is "<package>   # what it is for". The package names are for Arch
+# Linux (pacman). A table with the Debian/Ubuntu names is at the end.
+#
+# Install everything that is required (comment lines are skipped, and
+# packages that are already installed are not reinstalled):
+#
+#   sudo pacman -S --needed $(grep -vE '^[[:space:]]*(#|$)' requirements.txt | awk '{print $1}')
+#
+# Optional tools are written as comments that start with "#opt". To install
+# them as well, copy their names by hand.
+#
+# Toolchain decision: boot code (UEFI applications and the kernel image) is
+# built with clang and lld for every target, x86_64 and AArch64. A UEFI
+# application is a PE/COFF file, which gcc on Linux does not produce by
+# itself. The exact compiler options (target names and so on) belong to
+# CMake and the specification, not to this file.
+#
+# GitHub Actions installs nothing from this file: the CI image already has
+# gcc, clang, cmake, and git.
+
+# ---- Needed for every kind of work (CI scripts, build, git) ----
+
+bash            # runs the scripts in CI/
+git             # version control
+github-cli      # the gh command: releases, milestones, CI results
+python          # helper scripts and local checks
+cmake           # configures the build (version 3.20 or newer)
+ninja           # fast build tool used by CMake
+make            # default CMake build tool
+gcc             # first compiler of the CI matrix
+clang           # second compiler of the CI matrix; also provides clangd, clang-tidy, clang-format
+binutils        # as, ld, objdump, readelf, nm: inspect object files and the kernel ELF
+llvm            # llvm-objdump, llvm-objcopy: inspect and convert boot images
+gdb             # debugger
+
+# ---- Needed to build and run the Milestone 0 boot code ----
+
+lld             # linker for UEFI (PE/COFF) applications and for kernel ELF files, both architectures
+qemu-system-x86       # runs x86_64 images (UEFI and BIOS)
+qemu-system-aarch64   # runs AArch64 images (UEFI)
+edk2-ovmf       # UEFI firmware for x86_64 in QEMU (OVMF)
+edk2-aarch64    # UEFI firmware for AArch64 in QEMU
+mtools          # writes files into FAT disk images without root rights
+dosfstools      # creates FAT file systems (the UEFI boot partition)
+libisoburn      # the xorriso command: builds bootable ISO images
+
+# ---- Optional ----
+
+#opt valgrind   # memory error checks of host-side unit tests
+#opt cppcheck   # extra static analysis
+#opt lldb       # alternative debugger
+#opt ccache     # faster repeated builds
+#opt libvirt    # virsh and the libvirt daemon (manual runs of the disk image)
+#opt virt-manager # graphical virtual machine manager for manual runs (see scripts/virt_manager_vm.md)
+#opt nasm       # only if an assembly file is ever written in NASM syntax; the project uses clang for .S files
+
+# ---- Debian / Ubuntu names (not verified on a Debian system) ----
+#
+#   bash            bash
+#   git             git
+#   github-cli      gh
+#   python          python3
+#   cmake           cmake
+#   ninja           ninja-build
+#   make            make
+#   gcc             gcc
+#   clang           clang clang-format clang-tidy clangd
+#   binutils        binutils
+#   llvm            llvm
+#   gdb             gdb
+#   lld             lld
+#   qemu-system-x86       qemu-system-x86
+#   qemu-system-aarch64   qemu-system-arm   (this package also contains aarch64)
+#   edk2-ovmf       ovmf
+#   edk2-aarch64    qemu-efi-aarch64
+#   mtools          mtools
+#   dosfstools      dosfstools
+#   libisoburn      xorriso

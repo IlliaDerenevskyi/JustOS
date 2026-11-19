@@ -247,27 +247,27 @@ Branches:
 
 - main: completed milestones and documentation-only states. Every one of
   them is tagged (Rule 24).
-- develop: the working branch. It holds the work in progress of the
-  current stage. Every push is checked by CI (Rule 42).
-- feature/milestone<N> (for example feature/milestone0): the branch of one
-  milestone. It receives only stages that passed review (Rule 26). It is
-  created from main when the milestone starts, after the milestone has
-  been created on GitHub (Rule 41).
+- develop: the working branch. All work happens here, and every push is
+  checked by CI (Rule 42). A finished and reviewed stage is recorded as one
+  commit whose message starts with "Stage <N>:" (Rule 26).
 
 Flow:
 
-1. Work happens in develop.
-2. When a stage is ready, the diff between feature/milestone<N> and develop
-   and the Stage Report go to the architecture review (Rule 26).
-3. After the review the stage enters feature/milestone<N> as one commit
-   (squash merge). CI must pass.
-4. develop is then brought up to date with feature/milestone<N>.
-5. When the milestone is complete (Rule 25), feature/milestone<N> is merged
-   into main, the tag is created, and the release is published. develop is
-   then brought up to date with main.
+1. Work happens in develop. Working commits are allowed.
+2. When a stage is ready, the diff since the previous "Stage <N-1>:" commit
+   (for the first stage, since the last tag) and the Stage Report go to the
+   architecture review (Rule 26).
+3. After the review the stage is recorded as the commit "Stage <N>: <title>".
+4. When the milestone is complete (Rule 25): the project builds, all tests
+   pass, and CI is green. Then develop is merged into main, the tag is
+   created, and the release is published.
 
 Documentation-only states (tags v0.0.x, Rule 24) go from develop directly
 to main.
+
+Inside a milestone, CI on develop may report a build as "incomplete" when it
+fails only because functions, types, or headers of later stages of the same
+milestone are missing (Rule 32). On main, any build failure is a failure.
 
 Merge only after successful build and tests.
 
@@ -392,7 +392,8 @@ The required workflow is:
 1. Complete the implementation of the current Stage.
 2. Generate:
    - a `git diff` containing all changes made during the Stage (the
-     difference between `feature/milestone<N>` and `develop`);
+     difference since the previous "Stage <N-1>:" commit; for the first
+     stage, since the last tag);
    - a short **Stage Report** describing:
      - completed tasks;
      - modified modules;
@@ -409,18 +410,17 @@ The required workflow is:
    - unnecessary or redundant code;
    - missing modules or functionality.
 5. Address all review comments.
-6. Only after all issues have been resolved may the developer put the
-   Stage into the milestone branch as one commit:
+6. Only after all issues have been resolved may the developer record the
+   Stage as one commit in develop:
    ```bash
-   git switch feature/milestone<N>
-   git merge --squash develop
-   git commit -m "<message>"
+   git add .
+   git commit -m "Stage <N>: <title>"
    ```
-7. A Stage is considered finished **only after the commit has been created in the milestone branch following a successful architectural review**.
+7. A Stage is considered finished **only after the "Stage <N>:" commit has been created following a successful architectural review**.
 
 **Important:**
 
-- Never commit unfinished or unreviewed stages to a milestone branch or to main. Working commits in develop are allowed.
+- Never record an unfinished or unreviewed stage as a "Stage <N>:" commit, and never merge it into main. Working commits in develop are allowed.
 - `git diff` must represent the complete set of changes made during the current Stage.
 - Documentation is the single source of truth; implementation must always follow it.
 ---
@@ -597,6 +597,15 @@ After completing a stage:
 the repository must remain internally consistent;
 no partially implemented architecture may be introduced;
 all engineering guarantees of completed stages remain valid.
+
+Exception inside a milestone:
+
+a stage may leave the build incomplete only because functions, types,
+or headers that later stages of the same milestone define are missing.
+CI reports such a build as "incomplete" on branches other than main.
+Any other build error is a failure. On main, any build failure is a
+failure, because main contains only completed milestones.
+
 Verification
 
 A completed stage must satisfy:
