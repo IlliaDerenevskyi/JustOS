@@ -1350,10 +1350,14 @@ JPBootInteraction interaction;
 
 JPBootResult stage2_result;
 
+JPBootStage2Area stage2;
+
 JPBootStage3Area stage3;
 
 JPBootStage4Area stage4;
 ```
+
+`stage2` is storage reserved inside the context for the Stage 2 memory ownership table (type `JPBootStage2Area`, declared in `include/justos/boot/boot_types.h` like `JPBootStage3Area`, because the context must be one complete object; its layout is the one in the rules of `memory.h` below). Stage 1 never reads, writes, or interprets it; it is zeroed together with the context.
 
 `stage2_result` is owned by Stage 2. It reads as `JP_BOOT_SUCCESS` (zero) until `jp_kernel_stage2_failure()` records a failing result; the caller that provides the context zero-initializes it. Stage 1 never reads or writes it.
 
@@ -5785,7 +5789,7 @@ EL1 translation regime
 4 KiB translation granule
 48-bit virtual-address regime
 TTBR1_EL1 identifies kernel translation tables
-TTBR0_EL1 is unused by Stage 2
+TTBR0_EL1 holds the identity map; Stage 1 builds the first one and paging.c replaces it with a W^X identity map at the same addresses (see "Decided rules (replacing the identity map)")
 TCR_EL1 and MAIR_EL1 are valid for selected mappings
 translation descriptors are 64-bit
 table descriptors select the next level
@@ -6723,6 +6727,25 @@ Successful return is permitted only when the resulting CPU state satisfies the S
 
 Executing initialization instructions alone is not sufficient to establish successful state.
 
+### Decided rules (mandatory CPU state)
+
+"Mandatory" means exactly this list. Nothing else (a feature that is merely present) is mandatory.
+
+x86_64: the processor is in long mode (`CR0.PE = 1`, `CR0.PG = 1`, `CR4.PAE = 1`, `EFER.LME = 1`, `EFER.LMA = 1`); the privilege level is 0; `RFLAGS.IF = 0`; `CPUID` reports "no execute" support (leaf `0x80000001`, `EDX` bit 20) and `cpu.c` sets `EFER.NXE = 1` and `CR0.WP = 1`, then reads them back. If "no execute" is missing the result is `JP_BOOT_FAILED`. SSE and the floating-point unit are **not** required and `cpu.c` does not turn them on: the kernel is compiled without them (`-mgeneral-regs-only`), because the BIOS path leaves them off.
+
+AArch64: the exception level is EL1; `PSTATE.DAIF = 1111`; `SCTLR_EL1.M = 1` (the MMU is on); `TCR_EL1` and `MAIR_EL1` are the values that Stage 1 wrote and `cpu.c` does not change them. `SCTLR_EL1.WXN` may be 0 or 1 at this point (`paging.c` sets it, see "Decided rules (replacing the identity map)"). The physical-address width is read by `memory.c` itself from `ID_AA64MMFR0_EL1.PARange` (see the AArch64 memory-range rule of `memory.h`); `cpu.c` does not read it.
+
+A required bit that is wrong makes the result `JP_BOOT_FAILED`; the original state is not repaired silently.
+
+**The exact steps of `jp_kernel_cpu_initialize()`.** A null `context` is `JP_BOOT_ERROR_INVALID_PARAM`. Every other failure below is `JP_BOOT_FAILED`. The function reads registers only through the private hook header `src/kernel/cpu_regs.h` (the instructions that C cannot write; the host tests replace them with a scripted fake, the QEMU tests run the real ones).
+
+1. `context->handoff.architecture` must be `JP_ARCH_X86_64` or `JP_ARCH_AARCH64` and must be an architecture this build supports (a build made for one architecture refuses the other); otherwise no register is read.
+2. x86_64. Read `RFLAGS`, `CR0`, `CR4`, `EFER`, and `CS`. Require `CR0.PE` (bit 0), `CR0.PG` (bit 31), `CR4.PAE` (bit 5), `EFER.LME` (bit 8), `EFER.LMA` (bit 10), the privilege level `CS & 3 == 0`, `RFLAGS.IF` (bit 9) equal to 0, and "no execute" support from `CPUID`. Then write `EFER` with `NXE` (bit 11) added and `CR0` with `WP` (bit 16) added, each with every other bit unchanged (a bit that is already set is not written again), read all four registers again, and require that `NXE` and `WP` are set and that every condition above still holds. The function never writes `RFLAGS`, `CR4`, or `CS`.
+3. AArch64. Read `CurrentEL`, `DAIF`, `SCTLR_EL1`, `TCR_EL1`, and `MAIR_EL1`. Require: the exception level (`CurrentEL` bits 3:2) is 1; the four mask bits of `DAIF` (bits 9:6) are all 1; `SCTLR_EL1.M` (bit 0) is 1; `TCR_EL1` has `T0SZ` (bits 5:0) and `T1SZ` (bits 21:16) equal to 16, `TG0` (bits 15:14) equal to `0b00`, `TG1` (bits 31:30) equal to `0b10`, and `EPD0` (bit 7) and `EPD1` (bit 23) equal to 0; `MAIR_EL1` equals `0x000000000000FF00`. The function writes no register at all.
+4. Success is returned only after the checks of steps 2 or 3 passed on the registers as they are after the writes.
+
+**The physical-address width.** The hook `jp_kernel_cpu_physical_address_bits()` (used by `memory.c`) returns, on x86_64, `CPUID` leaf `0x80000008`, `EAX` bits 7:0 (0 when the processor has no such leaf); on AArch64 it decodes `ID_AA64MMFR0_EL1.PARange` (bits 3:0): 0 is 32, 1 is 36, 2 is 40, 3 is 42, 4 is 44, 5 is 48, 6 is 52, any other value is 0 (unknown).
+
 ## CPU State Contract
 
 After successful initialization:
@@ -7090,7 +7113,7 @@ Paging:
 
 Stage 2 paging is required for both x86_64 and AArch64. Architectures other than x86_64 and AArch64 are outside the current paging interface contract.
 
-The x86_64 paging contract uses long-mode page tables and CR3. The AArch64 paging contract uses EL1, a 4 KiB granule, a 48-bit virtual-address regime, TTBR1_EL1 for kernel translation tables, TTBR0_EL1 unused by Stage 2, valid TCR_EL1/MAIR_EL1, and completed TLBI/DSB/ISB synchronization.
+The x86_64 paging contract uses long-mode page tables and CR3. The AArch64 paging contract uses EL1, a 4 KiB granule, a 48-bit virtual-address regime, TTBR1_EL1 for kernel translation tables, TTBR0_EL1 for the identity map (first built by Stage 1, replaced by `paging.c` at the same addresses), valid TCR_EL1/MAIR_EL1, and completed TLBI/DSB/ISB synchronization.
 
 ## Types / Structures
 
@@ -7540,7 +7563,44 @@ The implementation must not silently interpret another architecture as x86_64 pa
 
 For x86_64, the active root is `CR3`; long-mode paging is enabled; the PML4/PDPT/PD/PT hierarchy is valid; addresses are canonical; and required TLB synchronization is complete.
 
-For AArch64, the translation regime is EL1 with a 4 KiB granule and 48-bit virtual addresses; `TTBR1_EL1` identifies kernel translation tables; `TTBR0_EL1` is unused by Stage 2; `TCR_EL1` and `MAIR_EL1` are valid; and required `TLBI`, `DSB`, and `ISB` synchronization is complete.
+For AArch64, the translation regime is EL1 with a 4 KiB granule and 48-bit virtual addresses; `TTBR1_EL1` identifies kernel translation tables; `TTBR0_EL1` holds the identity map, through which the stack, the context, the page tables, the heap and the framebuffer are reached; `paging.c` replaces the Stage 1 identity map with a W^X one at the same addresses; `TCR_EL1` and `MAIR_EL1` are valid; and required `TLBI`, `DSB`, and `ISB` synchronization is complete.
+
+### Decided rules (replacing the identity map)
+
+**Why.** Stage 1 maps all memory to itself ("identity map": the virtual address equals the physical address) and makes every page both writable and executable, because the boot code has to run from wherever the firmware put it. Stage 1 says that Stage 2 replaces this map. A page that is writable and executable at the same time lets any bug turn data into running code, so Stage 2 closes it.
+
+**What the new map is.** `jp_kernel_paging_initialize()` builds a new identity map that covers the same addresses as the Stage 1 one (the same regions, the same exclusions, the framebuffer) and then makes it active. The addresses stay the same, so the pointers to the context, the stack, the heap and the tables stay valid. Only the permissions change:
+
+| memory | permissions in the new map |
+|---|---|
+| a range owned as `KERNEL_IMAGE` (a segment's physical pages) | by the segment's ELF flags: readable; writable only if the flag `W` is set; executable only if the flag `X` is set; never both writable and executable |
+| any other normal memory (the stack, the tables, the context, the heap, the rest of the available memory) | readable and writable, not executable |
+| the framebuffer | readable and writable, not executable, uncached (x86_64: cache-disable bit; AArch64: device memory) |
+| AArch64 `MMIO` regions | as in Stage 1: device memory, not executable |
+
+Pages of a kernel segment are 4 KiB pages, because a 2 MiB page cannot carry different flags for the first and the last part of it. Everything else may use 2 MiB pages. The high-half mappings of the kernel segments that Stage 1 built (virtual addresses of the kernel image) are kept as they are; they already carry the ELF flags.
+
+**How.** (1) The new tables are taken from the unused pages of the Stage 1 table pool (see the rule of `memory.c`); if the pool is too small the result is `JP_BOOT_FAILED` and the active map is not touched. (2) The whole new tree is built and checked while the old map is still active; (3) only then the root is switched: x86_64 writes the new root to `CR3` (the high-half entries of the old root are copied into the new root, so the kernel image stays mapped); AArch64 writes the new tree to `TTBR0_EL1` and runs `dsb ishst`, `tlbi vmalle1`, `dsb ish`, `isb`; (4) the result is read back: the root register holds the new root and the stack, the context and the entry stay accessible. The old tables are not freed: they stay in the table pool (owner `PAGE_TABLES`).
+
+**Which pages the new map contains (exactly).** The map is defined page by page (4 KiB). The *permission of a page* is the first rule that applies, in this order:
+1. The page lies in a kernel segment (`context->kernel.segments[i]`, from `physical_address` for `memory_size` bytes, rounded outwards to whole pages). The flags of the segment give the permission: execute flag (`JP_ELF_PF_X`, value 1) only: read and execute; write flag (`JP_ELF_PF_W`, value 2) only or no flag: read and write for a segment with the write flag, read only for a segment with neither; read and write and execute together is a mistake of Stage 1 and the result is `JP_BOOT_FAILED`. A page that lies in two segments with different permissions is also `JP_BOOT_FAILED`.
+2. The page lies in the framebuffer (`framebuffer.state` is `DETECTED`, from `base_address` for `pitch * height` bytes, rounded outwards to pages): read and write, no execute, uncached.
+3. The page lies in a 2 MiB block that a region of the Stage 1 memory map touches (the region is rounded outwards to whole 2 MiB blocks, as Stage 1 does: the devices of a machine, for example the serial port of an AArch64 machine, lie next to the regions that the firmware lists, and Stage 1 already reaches them), except the regions that Stage 1 does not map: x86_64 skips `MMIO` and `UNUSABLE` regions and `RESERVED` regions of `JP_X86_64_IDENTITY_RESERVED_MAX` (1 GiB) or more; AArch64 skips `UNUSABLE` regions and `RESERVED` or `MMIO` regions of 1 GiB or more. The page is then read and write, no execute; the exception is an AArch64 `MMIO` region, whose pages are device memory, read and write, no execute. Two regions that touch the same 2 MiB block with a different kind of memory (normal and device) are a mistake in the map: `JP_BOOT_FAILED`. Page 0 (address 0) is mapped when the block that holds it is touched by a region, as in Stage 1.
+4. Any other page is not mapped.
+The *leaf size* is chosen like this: an aligned block of 2 MiB is one 2 MiB entry if no start or end of a kernel segment or of the framebuffer lies strictly inside the block, and the permission of its first page is not "not mapped"; otherwise the block gets a table of 512 pages, and each page gets its own permission (the pages that are "not mapped" are left empty). A block whose pages are all unmapped has no entry at all. Only blocks that touch a region, a kernel segment, or the framebuffer are visited. Every block is created once.
+
+**The tables.** Four levels with 512 entries each (x86_64: PML4, PDPT, PD, PT; AArch64: levels 0 to 3), the index of a level being bits 47:39, 38:30, 29:21, 20:12 of the address. A new table is one page taken from the pool (page number `handoff.page_table_memory_used`, then `used` grows by one; the page is zero-filled before use); a pool with no page left is `JP_BOOT_FAILED`. On x86_64 the new root also receives the entries 256 to 511 of the old root (the root that `CR3` holds at the start), so the kernel half stays. On AArch64 the root of the `TTBR1_EL1` tree is not changed or copied, and the new root is the root of `TTBR0_EL1`.
+
+**Switching.** `jp_kernel_paging_initialize()` follows the order: check the inputs, read the old root, build the whole new tree (nothing is written to a register), switch the root through the private hook `paging_hw.h` (`jp_kernel_paging_write_root()`: x86_64 `mov cr3`; AArch64 `msr ttbr0_el1` followed by `dsb ishst`, `tlbi vmalle1`, `dsb ish`, `isb`), read the root back and require that it is the new root, and on AArch64 set `WXN` (`jp_kernel_aarch64_set_wxn()`: read `SCTLR_EL1`, set bit 19, write, `isb`) and read `SCTLR_EL1` back to require the bit. If a step before the switch fails, no register is written; the table pages taken from the pool stay used.
+
+**Errors.** `JP_BOOT_ERROR_INVALID_PARAM` for a null context. `JP_BOOT_NOT_INITIALIZED` when `jp_kernel_memory_initialize()` has not run (the ownership table is empty). `JP_BOOT_FAILED` for an unsupported architecture, a handoff without paging (`paging_enabled` false), a pool that is empty or not what the ownership table says (the range must be `PAGE_TABLES`), an old root that is zero or not page aligned, the permission conflicts above, and a full pool. `JP_BOOT_ERROR_CORRUPTED_DATA` for numbers that overflow.
+
+**`jp_kernel_paging_validate()`** (it takes the context and nothing else) reads the root register and walks the tables by the hook `jp_kernel_paging_table_at()` (a physical address to a pointer: the identity map, so the same number). It returns `JP_BOOT_SUCCESS` only if: (1) the root register holds a page-aligned root inside the table pool; (2) for every kernel segment, every page is translated at its physical address in the identity map and at its virtual address (`virtual_address`, through the root of the kernel half: x86_64 the same root, AArch64 `handoff.page_table_root`) to the segment's physical page, both with the permission of rule 1; (3) every range of the ownership table owned as `KERNEL_STACK`, `PAGE_TABLES`, `EARLY_HEAP`, `STAGE2_RUNTIME` or `AVAILABLE` is mapped at its own address, read and write, no execute (for each leaf the walk advances by the size of the leaf); a page that Stage 1 never mapped (a region skipped by rule 3) is not an error only if it is not in such a range; (4) on AArch64 `SCTLR_EL1.WXN` is set. A walk that meets an entry that is not valid, a leaf at a level where none is allowed, or an address outside the 48 bits, is `JP_BOOT_FAILED`. A null context is `JP_BOOT_ERROR_INVALID_PARAM`; an empty ownership table is `JP_BOOT_NOT_INITIALIZED`.
+
+**Descriptor bits.** The AArch64 descriptors of the new map use exactly the bit layout of the Stage 1 table (section `jp_aarch64_setup_paging`): block or page descriptor with bits 1:0, `AttrIdx` 1 for normal memory and 0 for device memory, access flag, inner shareable, `AP` for kernel read-write or kernel read-only, `UXN` always set, `PXN` set for every page that is not executable. A kernel-read-only page uses `AP = 0b10`. The x86_64 entries use present, writable (cleared for read-only pages), and no-execute (bit 63, set for every page that is not executable).
+
+**What the CPU must have before.** x86_64: `EFER.NXE = 1` (otherwise the bit "no execute" is an error) and `CR0.WP = 1` (otherwise the kernel can write to read-only pages); `cpu.c` sets both. AArch64: after the new map is active, `paging.c` sets `SCTLR_EL1.WXN = 1` ("a writable page is never executable"), runs `isb`, and reads the bit back; this is the only `SCTLR_EL1` write that `paging.c` makes, and `cpu.c` accepts `WXN` as either 0 or 1.
+
 
 Both paths provide the same observable mapping, permission, ownership, and failure contract.
 
@@ -8731,6 +8791,16 @@ The stack module must not independently rewrite page permissions.
 
 If a permission change is required, the paging subsystem remains responsible for performing the mapping operation according to its own contract.
 
+### Decided rules (what is checked and where the range comes from)
+
+The range of the stack is read from the ownership table of `memory.c` (the entry with the owner `JP_KERNEL_MEMORY_KERNEL_STACK`, which is `handoff.stack_pointer - JP_BOOT_KERNEL_STACK_SIZE` up to `handoff.stack_pointer`). `stack.c` checks: (1) the entry exists and its length is `JP_BOOT_KERNEL_STACK_SIZE`; (2) `handoff.stack_pointer` (the top) is a multiple of 16; (3) the current stack pointer (`RSP` or `SP`, read in the function) lies inside that range, and is a multiple of 8 on x86_64 and of 16 on AArch64: on x86_64 the `call` instruction pushes an 8-byte return address, so inside a function the pointer is 8 modulo 16 by the System V rule; (4) the range is writable: `jp_kernel_paging_validate()` (it takes only the context) returns success; its check includes that every range of the ownership table owned as `KERNEL_STACK`, `PAGE_TABLES` or `EARLY_HEAP`, and every `AVAILABLE` range, is mapped read-write and not executable in the active map. Any failed check is `JP_BOOT_FAILED`. The stack pointer is never changed.
+
+**The exact steps of `jp_kernel_stack_initialize()`.** A null `context` is `JP_BOOT_ERROR_INVALID_PARAM`; an empty ownership table is `JP_BOOT_NOT_INITIALIZED`; every check below that fails is `JP_BOOT_FAILED`. Let `top = handoff.stack_pointer` and `base = top - JP_BOOT_KERNEL_STACK_SIZE` (a `top` below the size fails).
+1. `jp_kernel_memory_query(base, JP_BOOT_KERNEL_STACK_SIZE)` returns `JP_BOOT_SUCCESS` with the owner `KERNEL_STACK`. The byte at `base - 1` and the byte at `top` are not owned by `KERNEL_STACK` (a query that finds nothing there counts as "not owned"), so the owned range has exactly the size of the Stage 1 stack.
+2. `top` is a multiple of 16.
+3. The current stack pointer, read through the private hook `jp_kernel_stack_current_pointer()` (x86_64: `mov %rsp`; AArch64: `mov x, sp`), satisfies `base <= pointer <= top`, and is a multiple of 8 on x86_64 and of 16 on AArch64.
+4. `jp_kernel_paging_validate(context)` returns `JP_BOOT_SUCCESS` (it includes that every `KERNEL_STACK` range is read-write and not executable).
+
 ## Stack Alignment
 
 The Stage 2 target architectures are x86_64 and AArch64. The active stack contract must define the corresponding ABI alignment for each architecture.
@@ -9275,6 +9345,19 @@ Deallocation must:
 Invalid pointers must not corrupt allocator state.
 
 The exact reuse and coalescing strategy is implementation-defined unless required by the Stage 2 contract.
+
+### Decided rules (the early heap region)
+
+The size of the early heap is one constant, `JP_KERNEL_EARLY_HEAP_SIZE`, declared in `include/justos/kernel/heap.h`, with the value 1 MiB (1048576 bytes). No other file repeats the number. `jp_kernel_heap_initialize()` asks the memory subsystem for the region with `jp_kernel_memory_allocate()` (owner `JP_KERNEL_MEMORY_EARLY_HEAP`, length `JP_KERNEL_EARLY_HEAP_SIZE`, alignment 4 KiB). `memory.c` answers with the lowest address that is at or above 1 MiB and where the whole range is `JP_KERNEL_MEMORY_AVAILABLE`. If there is no such range the result is `JP_BOOT_FAILED` and the heap stays not initialized. Because the new identity map makes all available memory readable, writable and not executable, the region is already mapped; `heap.c` calls `jp_kernel_paging_validate()` before it reports success (see the stack rule for what that check includes). The heap never grows: when the 1 MiB is used up, `jp_kernel_heap_alloc()` returns `NULL`.
+
+
+**Where the heap keeps its state.** The context has no area for the heap, and no global variable is allowed, so the state is inside the heap region itself. The region starts with a 16-byte *header* `{ magic, region_size }` (two 64-bit numbers). The magic number is the "active" marker: it is written as the very last step of `jp_kernel_heap_initialize()`, so a heap that is not completely set up never looks active. After the header the region is a chain of *blocks*. A block starts with a 16-byte block header `{ size, state }` (`size` is the whole block with its header, a multiple of 16 and at least 32; `state` is one of two marker numbers, FREE or USED), and the memory that the caller gets (the *payload*) follows the block header, so every payload address is a multiple of 16. All three functions find the region by the ownership table: there must be exactly one entry with the owner `EARLY_HEAP`, its length must be `JP_KERNEL_EARLY_HEAP_SIZE`, and its header must say the same base size and carry the magic number. If any of this is not true the heap is "not active": `jp_kernel_heap_alloc()` returns `NULL` and `jp_kernel_heap_free()` does nothing.
+
+**`jp_kernel_heap_initialize()` in order.** (1) A null `context` is `JP_BOOT_ERROR_INVALID_PARAM`; an empty ownership table is `JP_BOOT_NOT_INITIALIZED`. (2) If an `EARLY_HEAP` entry already exists, the heap was initialized (or the table is damaged): `JP_BOOT_FAILED`, nothing is changed. (3) `jp_kernel_memory_allocate(JP_KERNEL_EARLY_HEAP_SIZE, 4096, EARLY_HEAP)` (any failure is `JP_BOOT_FAILED`). (4) `jp_kernel_paging_validate()` must succeed (it now includes the new heap range, which must be read-write and not executable). If it fails, the region is given back with `jp_kernel_memory_release()` and the result is `JP_BOOT_FAILED`, so a failed initialization changes nothing. (5) The header and one FREE block that covers the whole rest of the region are written, then the magic number. The heap does not call `jp_kernel_stack_initialize()`: `jp_kernel_init()` runs the stack first, and the region cannot overlap the stack, the page tables or the kernel image because the ownership table gave it out of `AVAILABLE` memory only.
+
+**`jp_kernel_heap_alloc(context, size)`.** `NULL` for a null context, a heap that is not active, `size == 0`, or `size` larger than `JP_KERNEL_EARLY_HEAP_SIZE` (it can never fit, and this also keeps the arithmetic from overflowing). Otherwise the needed block size is 16 (the header) plus `size` rounded up to a multiple of 16. The chain is searched from the start (the lowest address) and the *first* FREE block that is big enough is taken (first fit; the same state always gives the same answer). If the block is at least 32 bytes bigger than needed, it is cut in two and the rest stays FREE; otherwise the whole block is taken. No FREE block that is big enough: `NULL`. A chain that is not consistent (a size that is not a multiple of 16, below 32, or past the end of the region; an unknown state marker) makes the heap not active for this call: `NULL`.
+
+**`jp_kernel_heap_free(context, ptr)`.** Does nothing for a null context, a null `ptr`, or a heap that is not active. Otherwise the chain is walked from the start to find the block whose payload address is exactly `ptr`; a `ptr` that is not the payload of a block (outside the region, in the middle of a block, the address of a header), or a block that is already FREE (a double free), is ignored and nothing is changed. A USED block becomes FREE, and then neighbouring FREE blocks are joined in one pass over the chain.
 
 ## Heap Region
 
@@ -10586,6 +10669,53 @@ It does not interact with firmware.
 
 No additional public memory-ownership API may be introduced unless the Stage 2 specification is updated.
 
+### Decided rules (the Stage 1 table pool)
+
+Stage 1 puts every boot page table and, on x86_64, the descriptor table (GDT) into one block of 128 pages. The block is described by `context->handoff.page_table_memory_base` and `page_table_memory_size`; `page_table_memory_used` says how many of its pages Stage 1 has already handed out.
+
+`jp_kernel_memory_initialize()` classifies the whole block (`base` to `base + size`) as `JP_KERNEL_MEMORY_PAGE_TABLES`, including the pages Stage 1 did not use and the page of the GDT. It does not split the block by `used`. The block is already marked reserved in the Stage 1 memory map, so no other owner can claim it. New tables that `paging` needs are taken from the unused pages of this block (from page number `used` on) and are not requested from `jp_kernel_memory_allocate()`. A block that is empty, not page-aligned, or outside a region of the Stage 1 map makes initialization fail with `JP_BOOT_ERROR_CORRUPTED_DATA`.
+
+### Decided rules (the ownership table and the initial owners)
+
+**Where the table lives.** The table "address range → owner" is stored in a new area of the context, `JPBootContext.stage2` (type `JPBootStage2Area`), next to `stage3` and `stage4`. Why there: the project forbids global mutable state and `malloc`, and the context is the one object that Stage 2 receives. The area holds a counter and a fixed array of 256 entries; an entry is `{ uint64_t base_address; uint64_t length; uint32_t owner; }`, where `owner` holds a `JPKernelMemoryOwner` value (it is a plain integer in `boot_types.h`, so that the Stage 1 header does not include a Stage 2 header). The entries are kept sorted by `base_address` and never overlap. Together they cover exactly the memory of the Stage 1 map (the map itself may have holes between regions; the table has the same holes). Two neighbouring entries with the same owner are merged into one. 256 is twice `JP_MAX_MEMORY_REGIONS`: the Stage 1 map has at most 128 regions and every region can be split by the ranges below. When an operation would need a 257th entry it fails with `JP_BOOT_FAILED` and changes nothing. `jp_kernel_memory_initialize()` zeroes the area before it fills it. The first words of the area carry no magic value; "initialized" is the counter being non-zero.
+
+**How the initial owners are found.** `jp_kernel_memory_initialize()` builds the table in two passes. It reads only fields of the context, never firmware.
+
+Pass 1, one entry per region of `context->memory_map`, by the region type:
+
+| Stage 1 region type | owner |
+|---|---|
+| `JP_MEMORY_REGION_USABLE` | `JP_KERNEL_MEMORY_AVAILABLE` |
+| `JP_MEMORY_REGION_RESERVED` | `JP_KERNEL_MEMORY_STAGE1_RESERVED` |
+| `JP_MEMORY_REGION_ACPI`, `MMIO`, `FIRMWARE` | `JP_KERNEL_MEMORY_FIRMWARE_RESERVED` |
+| `JP_MEMORY_REGION_UNUSABLE`, `UNKNOWN` | `JP_KERNEL_MEMORY_UNAVAILABLE` |
+
+Pass 2, each of these ranges is cut out of the `STAGE1_RESERVED` entry that contains it and given its owner. A range that is not fully inside one `STAGE1_RESERVED` entry makes initialization fail with `JP_BOOT_ERROR_CORRUPTED_DATA`: Stage 1 reserved all of them, so a range outside means the handoff is broken.
+
+| range | owner | where the numbers come from |
+|---|---|---|
+| each kernel segment, from `physical_address` for `memory_size` bytes, rounded to whole pages | `JP_KERNEL_MEMORY_KERNEL_IMAGE` | `context->kernel.segments[0 .. segment_count - 1]` |
+| the stack, from `handoff.stack_pointer - JP_BOOT_KERNEL_STACK_SIZE` to `handoff.stack_pointer` | `JP_KERNEL_MEMORY_KERNEL_STACK` | `context->handoff` |
+| the table pool, `page_table_memory_base` for `page_table_memory_size` bytes | `JP_KERNEL_MEMORY_PAGE_TABLES` | `context->handoff` (see the rule above) |
+| the framebuffer, `base_address` for `pitch * height` bytes, rounded to whole pages; skipped when `framebuffer.state` is not `JP_DETECTION_STATE_DETECTED` | `JP_KERNEL_MEMORY_FRAMEBUFFER` | `context->framebuffer` |
+| the context itself, from the address of `context` for `sizeof(JPBootContext)` bytes, rounded to whole pages | `JP_KERNEL_MEMORY_STAGE2_RUNTIME` | the pointer Stage 2 received |
+
+Everything in `STAGE1_RESERVED` that is left after pass 2 stays `STAGE1_RESERVED` (for example, the provider's own context). The framebuffer of a real machine can lie outside the Stage 1 map (it is device memory); in that case it is not in the table and `jp_kernel_memory_query()` for it returns `JP_BOOT_NOT_DETECTED` — the module does not invent an owner. **The framebuffer, four cases.** (a) The range lies completely outside the table: it is skipped (the table does not own it). (b) It lies completely inside `STAGE1_RESERVED` entries: it is cut out as described. (c) It lies completely inside entries whose owner is `FIRMWARE_RESERVED` (the firmware lists the region as `ACPI`, `MMIO`, or `FIRMWARE`, and a real machine may put its framebuffer there): it is left as it is, owned by the firmware, and `jp_kernel_memory_query()` for it says `FIRMWARE_RESERVED` (paging still maps it, uncached). (d) Anything else (it touches an available or unavailable entry, or only part of it is inside the table or inside one kind of entry): `JP_BOOT_ERROR_CORRUPTED_DATA`, because available memory cannot be a framebuffer.
+
+**Checks at the start of `jp_kernel_memory_initialize()`.** A null context is `JP_BOOT_ERROR_INVALID_PARAM`. The map must have `state == JP_DETECTION_STATE_DETECTED` and 1 to `JP_MAX_MEMORY_REGIONS` regions, and the kernel must have `load_state == JP_KERNEL_LOAD_LOADED` and at least one segment; otherwise `JP_BOOT_FAILED`. Every region must have a length above zero, end without overflow, stay below `2^bits` where `bits` is the physical-address width of the processor (x86_64: `CPUID` leaf `0x80000008`, `EAX` bits 7:0; AArch64: `ID_AA64MMFR0_EL1.PARange`; read through the private hook `jp_kernel_cpu_physical_address_bits()`), and must not overlap another region; otherwise `JP_BOOT_ERROR_CORRUPTED_DATA`. The regions may come in any order: the table is sorted while it is built.
+
+**The operations (what the contract above leaves open).** Every operation except `initialize` returns `JP_BOOT_NOT_INITIALIZED` while the table is empty (`entry_count == 0`). A null context or null output pointer is `JP_BOOT_ERROR_INVALID_PARAM`, and so is a length of zero, an overflowing range, or an `owner` value outside the enumeration.
+
+- `reserve(base, length, owner)`: `owner` must be one of `KERNEL_IMAGE`, `KERNEL_STACK`, `PAGE_TABLES`, `FRAMEBUFFER`, `STAGE2_RUNTIME`, `EARLY_HEAP` (any other owner is `JP_BOOT_ERROR_INVALID_PARAM`). `base` and `length` are multiples of 4 KiB. The whole range must be `AVAILABLE`; it then gets `owner`. Not available, partly available, or outside the table: `JP_BOOT_FAILED`. A second `reserve` of the same range is a duplicate and also `JP_BOOT_FAILED`; no operation is idempotent.
+- `allocate(length, alignment, owner, *base)`: same `owner` rule as `reserve`; `length` is a non-zero multiple of 4 KiB; `alignment` is a power of two and at least 4 KiB. It chooses the lowest address that is at least `JP_BOOT_PROTECTED_LOW_MEMORY` (1 MiB), is a multiple of `alignment`, and where the whole range is `AVAILABLE` (first fit by address), gives it to `owner`, and writes it to `*base`. No such range: `JP_BOOT_FAILED` and `*base` is not written.
+- `query(base, length, *owner)`: succeeds with the owner if the whole range lies inside the table and has exactly one owner. A range that is not completely in the table, or has more than one owner, gives `JP_BOOT_NOT_DETECTED` and `*owner` is not written.
+- `release(base, length, owner)`: allowed only for `EARLY_HEAP`; the whole range must be owned by `EARLY_HEAP`; it becomes `AVAILABLE`. Any other owner is `JP_BOOT_FAILED` (the kernel image, stack, tables, framebuffer and the context are never given back), and so is a range that is not entirely owned by `owner`.
+- `validate_ownership()`: `JP_BOOT_SUCCESS` only if: `1 <= entry_count <= JP_KERNEL_MEMORY_MAX_ENTRIES`; every entry has a non-zero length, no overflow, and a valid owner; entries are strictly increasing and do not overlap; two neighbours that touch never have the same owner (they would be merged); `AVAILABLE` and `EARLY_HEAP` entries lie inside `USABLE` regions of the Stage 1 map; and every region of the map is covered completely and the sum of the entry lengths equals the sum of the region lengths. Otherwise `JP_BOOT_ERROR_CORRUPTED_DATA`.
+
+Every operation that changes the table first checks everything and that there is room for the entries it adds (one for each end of the range that cuts an existing entry, so at most two; an operation that cuts nothing needs no room, so even a full table can give a whole entry back), and only then changes it: a rejected request leaves the table byte for byte as it was.
+
+A page is not owned just because Stage 1 mapped it (Stage 1 maps whole 2 MiB pages): ownership follows this table, mappings follow `paging`.
+
 ## Internal API
 
 No internal functions are exposed by the header.
@@ -11672,6 +11802,17 @@ The implementation may provide helpers for:
 - ELF-state consistency validation.
 
 Exact helper names and decomposition are implementation-defined.
+
+### Decided rules (the exact checks of `jp_kernel_elf_initialize()`)
+
+The function only reads. A null `context` is `JP_BOOT_ERROR_INVALID_PARAM`; an empty ownership table is `JP_BOOT_NOT_INITIALIZED`; every check below that fails is `JP_BOOT_FAILED`. The checks are made in this order, and the first failure ends the function.
+1. `kernel.validation_state` is `JP_KERNEL_VALIDATION_VALID` and `kernel.load_state` is `JP_KERNEL_LOAD_LOADED`; the architecture is supported by the build.
+2. The header: `magic` is `JP_ELF_MAGIC`; `elf_class` is `JP_ELF_CLASS_64`; `type` is `JP_ELF_TYPE_EXEC` (the only type that Stage 1 accepts: Stage 2 does not relocate); `machine` is `JP_ELF_MACHINE_X86_64` for an x86_64 context and `JP_ELF_MACHINE_AARCH64` for an AArch64 one; `program_header_entry_size` is 56 (the size of an ELF64 program header) and `program_header_count` is at least `segment_count`.
+3. `segment_count` is between 1 and `JP_MAX_KERNEL_SEGMENTS`.
+4. For every segment: `state` is `JP_KERNEL_SEGMENT_PERMISSIONED`; `memory_size` is above zero and `file_size <= memory_size`; the virtual range `virtual_address` for `memory_size` bytes and the physical range `physical_address` for `memory_size` bytes do not overflow; the first and the last byte of the virtual range are canonical addresses (bits 63 to 47 all equal on x86_64; bits 63 to 48 all equal on AArch64); and the physical range, rounded outwards to pages, is owned as one range by `KERNEL_IMAGE` (`jp_kernel_memory_query()`).
+5. No two segments overlap in virtual addresses.
+6. The entry point: `kernel.entry_point`, `kernel.header.entry_point` and `handoff.kernel_entry` are the same number; it is canonical; and it lies inside the virtual range of a segment whose flags contain `JP_ELF_PF_X`.
+7. `jp_kernel_paging_validate()` succeeds (it checks that every segment is mapped with the permission of its flags, so the mapping and permission states are checked there and nothing is created or changed here).
 
 ## ELF Identification Validation
 
@@ -12808,7 +12949,20 @@ Subsystems may update the portions of `JPBootContext` explicitly assigned to the
 
 `init.c` must not modify subsystem-owned state merely to simplify orchestration.
 
-The `current_stage` field, if used as the authoritative Stage 2 progress indicator, remains controlled by the orchestrator according to the shared boot-state contract.
+Stage 2 never writes `current_stage`: the enumeration `JPBootStage` has no Stage 2 values, and `current_stage` is written only by the public functions of the Stage 1 pipeline. After a successful Stage 2 it still reads `JP_BOOT_STAGE_READY`. The only field of the context that the orchestrator writes is `stage2_result` (through `jp_kernel_stage2_failure()`), and the areas that the subsystems own (`stage2`, see `memory.c`).
+
+### Decided rules (checking the entry and a broken handoff)
+
+The first step of `jp_kernel_init()`, before any subsystem runs, is to check the handoff. The result is `JP_BOOT_ERROR_INVALID_PARAM` when `context` is `NULL`, and `JP_BOOT_FAILED` when one of these is not true: `context->current_stage == JP_BOOT_STAGE_READY`, `context->handoff.state == JP_HANDOFF_STATE_READY`, `context->handoff.ownership_transferred`, `context->handoff.interrupts_disabled`, `context->handoff.paging_enabled`, `context->handoff.architecture` equals the architecture the code was built for. No subsystem is started after a failed check.
+
+`jp_kernel_stage2_failure(context, result)` with `context == NULL` writes nothing (there is nowhere to write) and does not call `jp_kernel_stage2_complete()` (it would have no context to hand over). It stops the processor instead: a loop that waits for an interrupt with the interrupts masked (x86_64: `cli`, then `hlt` repeated; AArch64: `wfi` repeated). It never returns and never pretends that Stage 2 succeeded.
+
+
+**The sequence, exactly.** After the entry check, `jp_kernel_init()` calls these functions with the same `context`, in this order, and stops at the first one that does not return `JP_BOOT_SUCCESS`: `jp_kernel_cpu_initialize`, `jp_kernel_memory_initialize`, `jp_kernel_paging_initialize`, `jp_kernel_stack_initialize`, `jp_kernel_heap_initialize`, `jp_kernel_elf_initialize`. It returns the result of the function that failed, unchanged, and calls nothing after it. When all six succeeded it checks the completion state: `jp_kernel_memory_validate_ownership(context)` and then `jp_kernel_paging_validate(context)` (the heap exists now, so these checks include it); the first one that does not succeed is returned unchanged. Only when both succeed does it return `JP_BOOT_SUCCESS`. Nothing is rolled back: after a failure the state of the earlier subsystems is left as it is, and the context is never used again for a normal start (the failure sink and what follows only read it).
+
+**The failure sink, exactly.** `jp_kernel_stage2_failure(context, result)`: (1) a null `context` stops the processor (see above). (2) Otherwise `context->stage2_result` becomes `result`; but if `result` is `JP_BOOT_SUCCESS` (the caller made a mistake) it becomes `JP_BOOT_FAILED`, so a failure can never be recorded as success. (3) `jp_kernel_stage2_complete(context)` is called. No other field is written. Stopping the processor is done through the private hook `jp_kernel_halt()` (`halt_hw.h`; x86_64: `cli`, then `hlt` in a loop; AArch64: mask all interrupts, then `wfi` in a loop).
+
+**The entry stubs, exactly.** `just_kernel_entry_x86_64` (`src/kernel/entry_x86_64.S`) and `just_kernel_entry_aarch64` (`src/kernel/entry_aarch64.S`) receive the context in the first argument register (`RDI`, `X0`). Each one saves the context in a register that C functions keep (`RBX`, `X19`), keeps the stack pointer aligned as the ABI requires at a call (x86_64: Stage 1 pushed a zero return address, so the stack is 8 modulo 16 at the entry and one `push` makes it 0 modulo 16; AArch64: the stack is 16-aligned at the entry and stays so), calls `jp_kernel_init(context)`, and looks at the 32-bit result: zero (`JP_BOOT_SUCCESS`) goes to `jp_kernel_stage2_complete(context)`; anything else goes to `jp_kernel_stage2_failure(context, result)` (result in `ESI` or `W1`). Neither call returns; if one does, the stub stops the processor in a `hlt` or `wfi` loop. The stubs touch no other register state, never enable interrupts, and never write memory except by `push` and `call`.
 
 ## Determinism
 
@@ -13295,24 +13449,24 @@ No architecture-significant requirement may exist only in implementation.
 
 The Stage 2 specification is considered complete only if:
 
-- [ ] every required subsystem is specified;
-- [ ] every required production file is specified;
-- [ ] every public API is specified;
-- [ ] every architecture-significant structure is specified;
-- [ ] every architecture-significant enum is specified;
-- [ ] every required constant is specified;
-- [ ] every subsystem dependency is specified;
-- [ ] every ownership relationship is specified;
-- [ ] every lifetime requirement is specified;
-- [ ] every initialization dependency is specified;
-- [ ] every initialization order requirement is specified;
-- [ ] every failure path is specified;
-- [ ] every mandatory invariant is specified;
-- [ ] Stage 1 → Stage 2 boundary is specified;
-- [ ] Stage 2 → Stage 3 boundary is specified;
-- [ ] Stage 2 completion boundary is specified;
-- [ ] unsupported behavior is explicitly excluded;
-- [ ] implementation freedom is explicitly defined where applicable.
+- [x] every required subsystem is specified;
+- [x] every required production file is specified;
+- [x] every public API is specified;
+- [x] every architecture-significant structure is specified;
+- [x] every architecture-significant enum is specified;
+- [x] every required constant is specified;
+- [x] every subsystem dependency is specified;
+- [x] every ownership relationship is specified;
+- [x] every lifetime requirement is specified;
+- [x] every initialization dependency is specified;
+- [x] every initialization order requirement is specified;
+- [x] every failure path is specified;
+- [x] every mandatory invariant is specified;
+- [x] Stage 1 → Stage 2 boundary is specified;
+- [x] Stage 2 → Stage 3 boundary is specified;
+- [x] Stage 2 completion boundary is specified;
+- [x] unsupported behavior is explicitly excluded;
+- [x] implementation freedom is explicitly defined where applicable.
 
 ### Completeness Rule
 
@@ -13334,16 +13488,16 @@ The coder must not resolve an architecture-significant specification gap indepen
 
 Stage 2 receives Specification Lock only if all of the following are true:
 
-- [ ] Specification Completeness Verification passed.
-- [ ] Specification Traceability is complete.
-- [ ] All Stage 2 subsystems have complete contracts.
-- [ ] All Stage 2 production files have complete File Specifications.
-- [ ] Execution order is unambiguous.
-- [ ] Ownership is unambiguous.
-- [ ] Failure semantics are unambiguous.
-- [ ] Stage boundaries are unambiguous.
-- [ ] Architecture target is unambiguous.
-- [ ] No architecture-significant implementation gap remains.
+- [x] Specification Completeness Verification passed.
+- [x] Specification Traceability is complete.
+- [x] All Stage 2 subsystems have complete contracts.
+- [x] All Stage 2 production files have complete File Specifications.
+- [x] Execution order is unambiguous.
+- [x] Ownership is unambiguous.
+- [x] Failure semantics are unambiguous.
+- [x] Stage boundaries are unambiguous.
+- [x] Architecture target is unambiguous.
+- [x] No architecture-significant implementation gap remains.
 
 If any mandatory criterion fails:
 
@@ -13352,6 +13506,8 @@ If any mandatory criterion fails:
 If all mandatory criteria pass:
 
     SPECIFICATION LOCK = APPROVED
+
+**Record of the decision (Stage 2).** `SPECIFICATION LOCK = APPROVED`, signed by the project owner on 2026-11-20. How it was reached, for the reader of the history: the specification text was audited against Stage 1 (the finished code) and against Part 1 of `milestone0_pre_lock.md` (all 27 items ticked), the gaps that were found were decided with the owner and written into the "Decided rules" blocks, and the contract was then implemented and tested (host tests, mutation checks, QEMU on x86_64 UEFI, x86_64 BIOS, and AArch64 UEFI). The two lists above (Completeness and Traceability) were ticked after that implementation, against the finished text, so they confirm that the text describes what was built. A later gap in an architecture-significant contract still follows the rule of "Completeness Rule": update the specification first. "Implementation Acceptance" below is a separate step and is not ticked by this decision.
 
 Specification Lock approval means the architecture-significant contract is frozen for implementation.
 

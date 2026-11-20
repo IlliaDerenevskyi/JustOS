@@ -1,5 +1,5 @@
 /* Link layout of the test kernel for AArch64: higher half, 4 KiB aligned segments. */
-ENTRY(kernel_main)
+ENTRY(just_kernel_entry_aarch64)
 
 PHDRS
 {

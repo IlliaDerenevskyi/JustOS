@@ -49,6 +49,11 @@
 #define JP_ELF_TYPE_DYN 3
 #define JP_ELF_PT_LOAD 1
 
+/* ELF segment flags (p_flags). */
+#define JP_ELF_PF_X 1
+#define JP_ELF_PF_W 2
+#define JP_ELF_PF_R 4
+
 #define JP_ELF_MACHINE_X86_64 62
 #define JP_ELF_MACHINE_AARCH64 183
 
@@ -333,6 +338,27 @@ typedef struct JPBootInteraction {
 	void *user_data;
 } JPBootInteraction;
 
+/* ---- Stage 2 area ---- */
+
+/*
+ * The table "address range -> owner" of the Stage 2 memory subsystem. Only
+ * src/kernel/memory.c reads and writes it. The entries are sorted by
+ * base_address and never overlap. owner holds a JPKernelMemoryOwner value
+ * (a plain integer here, so that this header needs no Stage 2 header).
+ */
+#define JP_KERNEL_MEMORY_MAX_ENTRIES 256
+
+typedef struct JPBootStage2MemoryEntry {
+	uint64_t base_address;
+	uint64_t length;
+	uint32_t owner;
+} JPBootStage2MemoryEntry;
+
+typedef struct JPBootStage2Area {
+	size_t entry_count;
+	JPBootStage2MemoryEntry entries[JP_KERNEL_MEMORY_MAX_ENTRIES];
+} JPBootStage2Area;
+
 /* ---- Areas reserved for later stages ---- */
 
 /*
@@ -377,6 +403,8 @@ struct JPBootContext {
 	JPBootInteraction interaction;
 
 	JPBootResult stage2_result;
+
+	JPBootStage2Area stage2;
 
 	JPBootStage3Area stage3;
 	JPBootStage4Area stage4;

@@ -1,5 +1,5 @@
 /* Link layout of the test kernel for x86_64: higher half, 4 KiB aligned segments. */
-ENTRY(kernel_main)
+ENTRY(just_kernel_entry_x86_64)
 
 PHDRS
 {

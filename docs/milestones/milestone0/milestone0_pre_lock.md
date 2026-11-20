@@ -5,39 +5,39 @@
 
 This file is a review checklist only. The normative definitions live in `milestone0.md` and `boot.md`. A checklist item passes only when the corresponding rule is present, consistent, and verifiable in those authoritative documents.
 
-Part 1 below is the review list for Stage 2. Stage 2 remains **NOT LOCKED** until every item of Part 1 passes. Part 2 is the detailed list of the functions and tests of all four stages; it is used when the code is checked.
+Part 1 below is the review list for Stage 2. Stage 2 stayed **NOT LOCKED** until every item of Part 1 passed. All items of Part 1 passed and the Specification Lock Decision was signed by the project owner on 2026-11-20 (see "Specification Lock Decision" in `milestone0.md`). Part 2 is the detailed list of the functions and tests of all four stages; it is used when the code is checked.
 
 # Part 1 — Stage 2 pre-lock corrections
 
 ## Cross-Stage Corrections
 
-- [ ] x86_64 and AArch64 are both required Milestone 0 architectures.
-- [ ] UEFI is required for both architectures.
-- [ ] BIOS is required only for x86_64.
-- [ ] Architecture-specific Stage 1 and Stage 2 contracts are complete for both architectures.
-- [ ] x86_64 handoff and Stage 2 entry define `IF = 0`.
-- [ ] AArch64 interrupt mask state is explicitly defined as `PSTATE.DAIF = 1111`.
-- [ ] AArch64 CPU state defines EL1, SCTLR_EL1 boundary, and TCR_EL1/MAIR_EL1 preservation for paging.
-- [ ] AArch64 paging defines 4 KiB granules, 48-bit virtual addresses, TTBR1_EL1, descriptor classes, permission bits, and TLBI/DSB/ISB ordering.
-- [ ] Stage 2 keeps interrupts disabled until the separately specified enable boundary.
-- [ ] The sole path is Stage 1 handoff -> architecture-specific Stage 2 entry stub -> `jp_kernel_init(context)` -> CPU -> Memory -> Paging -> Stack -> Heap -> ELF -> `kernel_main(context)`.
-- [ ] The Stage 2 entry stub, `jp_kernel_init()`, completion point, transfer owner, calling conventions, and machine state are defined.
-- [ ] `jp_kernel_stage2_failure()` has a defined symbol, declaration, implementation location, calling convention, and non-returning behavior for both architectures.
-- [ ] The Stage 2 memory subsystem is the single authoritative physical-memory owner.
-- [ ] Kernel image, stack, page tables, heap, framebuffer, firmware-reserved, and runtime regions have explicit ownership.
-- [ ] General allocation cannot consume reserved memory.
-- [ ] Memory ownership operations are defined conceptually: reserve, allocate, query, release/reclaim where permitted, typed-region request, validation, and conflict rejection.
-- [ ] `paging.c`, `stack.c`, and `heap.c` have no independent physical allocators.
-- [ ] Heap alignment is 16 bytes, allocation granularity is 16 bytes, zero-size allocation returns `NULL`, free is public and required, and Stage 2 heap growth is forbidden.
-- [ ] Boot Security is explicitly limited to boot integrity and execution-state validation.
-- [ ] Validation, trust, and authentication are distinct; no cryptographic-authenticity claim is implied.
-- [ ] `JPBootInfo` is excluded from Stage 1 and Stage 2.
-- [ ] `JPBootContext + JPHandoffInfo + ownership-transfer state` is the authoritative Stage 1 -> Stage 2 contract.
-- [ ] `JPBootContext` ownership transfers to Stage 2 at handoff; Stage 1 has no access afterward; the same pointer reaches `kernel_main(context)`.
-- [ ] `kernel_loader.h` is included in the canonical Stage 1 file structure and specified.
-- [ ] AArch64 CPU, paging descriptor, stack, memory-range, ELF, and init contracts are concrete in their owning file specifications.
-- [ ] Stage 1 acceptance has separate x86_64/UEFI, x86_64/BIOS, and AArch64/UEFI cases, with AArch64/BIOS explicitly rejected.
-- [ ] `boot.md`, Stage 1, Stage 2, and later Milestone 0 documents use the same BootInfo lifecycle.
+- [x] x86_64 and AArch64 are both required Milestone 0 architectures.
+- [x] UEFI is required for both architectures.
+- [x] BIOS is required only for x86_64.
+- [x] Architecture-specific Stage 1 and Stage 2 contracts are complete for both architectures.
+- [x] x86_64 handoff and Stage 2 entry define `IF = 0`.
+- [x] AArch64 interrupt mask state is explicitly defined as `PSTATE.DAIF = 1111`.
+- [x] AArch64 CPU state defines EL1, SCTLR_EL1 boundary, and TCR_EL1/MAIR_EL1 preservation for paging.
+- [x] AArch64 paging defines 4 KiB granules, 48-bit virtual addresses, TTBR1_EL1, descriptor classes, permission bits, and TLBI/DSB/ISB ordering.
+- [x] Stage 2 never enables interrupts (x86_64 `IF = 0`, AArch64 `DAIF = 1111` stay unchanged through the exit to `jp_kernel_stage2_complete`); enabling them is outside Stage 2 and is not specified in Milestone 0.
+- [x] The sole path is Stage 1 handoff -> architecture-specific Stage 2 entry stub -> `jp_kernel_init(context)` -> CPU -> Memory -> Paging -> Stack -> Heap -> ELF -> `jp_kernel_stage2_complete(context)` (then Stage 3, Stage 4, and `kernel_main(context)`).
+- [x] The Stage 2 entry stub, `jp_kernel_init()`, completion point, transfer owner, calling conventions, and machine state are defined.
+- [x] `jp_kernel_stage2_failure()` has a defined symbol, declaration, implementation location, calling convention, and non-returning behavior for both architectures.
+- [x] The Stage 2 memory subsystem is the single authoritative physical-memory owner.
+- [x] Kernel image, stack, page tables, heap, framebuffer, firmware-reserved, and runtime regions have explicit ownership.
+- [x] General allocation cannot consume reserved memory.
+- [x] Memory ownership operations are defined conceptually: reserve, allocate, query, release/reclaim where permitted, typed-region request, validation, and conflict rejection.
+- [x] `paging.c`, `stack.c`, and `heap.c` have no independent physical allocators.
+- [x] Heap alignment is 16 bytes, allocation granularity is 16 bytes, zero-size allocation returns `NULL`, free is public and required, and Stage 2 heap growth is forbidden.
+- [x] Boot Security is explicitly limited to boot integrity and execution-state validation.
+- [x] Validation, trust, and authentication are distinct; no cryptographic-authenticity claim is implied.
+- [x] `JPBootInfo` is excluded from Stage 1 and Stage 2.
+- [x] `JPBootContext + JPHandoffInfo + ownership-transfer state` is the authoritative Stage 1 -> Stage 2 contract.
+- [x] `JPBootContext` ownership transfers to Stage 2 at handoff; Stage 1 has no access afterward; the same pointer reaches `kernel_main(context)`.
+- [x] `kernel_loader.h` is included in the canonical Stage 1 file structure and specified.
+- [x] AArch64 CPU, paging descriptor, stack, memory-range, ELF, and init contracts are concrete in their owning file specifications.
+- [x] Stage 1 acceptance has separate x86_64/UEFI, x86_64/BIOS, and AArch64/UEFI cases, with AArch64/BIOS explicitly rejected.
+- [x] `boot.md`, Stage 1, Stage 2, and later Milestone 0 documents use the same BootInfo lifecycle.
 
 ## Verification Sequence
 

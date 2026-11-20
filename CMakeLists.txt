@@ -143,8 +143,19 @@ if(JP_ENABLE_QEMU_TESTS)
 		${JP_TEST_KERNEL_DIR}/wait_common.c
 	)
 
+	# Stage 2 (src/kernel): the test kernel starts through the Stage 2 entry stub, so the QEMU test runs the
+	# real Stage 2. Only the stand-in for the Stage 4 continuation is test code.
+	set(JP_KERNEL_SRC ${CMAKE_SOURCE_DIR}/src/kernel)
+	set(JP_KERNEL_COMMON_SOURCES
+		${JP_KERNEL_SRC}/cpu.c ${JP_KERNEL_SRC}/memory.c ${JP_KERNEL_SRC}/paging.c ${JP_KERNEL_SRC}/stack.c
+		${JP_KERNEL_SRC}/heap.c ${JP_KERNEL_SRC}/elf.c ${JP_KERNEL_SRC}/init.c
+		${JP_TEST_KERNEL_DIR}/fake_stage2_complete.c
+	)
+	set(JP_KERNEL_ONLY_MACRO_x86_64 JP_KERNEL_ONLY_X86_64)
+	set(JP_KERNEL_ONLY_MACRO_aarch64 JP_KERNEL_ONLY_AARCH64)
+
 	# The test kernel must not use SSE on x86_64: the BIOS path leaves the SSE bits of CR0 and CR4 off.
-	set(JP_TEST_KERNEL_ARCH_FLAGS_x86_64 -mgeneral-regs-only)
+	set(JP_TEST_KERNEL_ARCH_FLAGS_x86_64 -mgeneral-regs-only -mno-red-zone)
 	set(JP_TEST_KERNEL_ARCH_FLAGS_aarch64 "")
 
 	# jp_add_qemu_test(<platform> <clang target> <architecture>)
@@ -162,8 +173,17 @@ if(JP_ENABLE_QEMU_TESTS)
 				${JP_TEST_KERNEL_SOURCES}
 				${JP_TEST_KERNEL_DIR}/serial_${arch}.c
 				${JP_TEST_KERNEL_DIR}/wait_${arch}.c
+				${JP_KERNEL_COMMON_SOURCES}
+				${JP_KERNEL_SRC}/cpu_regs_${arch}.c ${JP_KERNEL_SRC}/paging_hw_${arch}.c
+				${JP_KERNEL_SRC}/stack_hw_${arch}.c ${JP_KERNEL_SRC}/halt_hw_${arch}.c
+				${JP_KERNEL_SRC}/entry_${arch}.S
+				-D${JP_KERNEL_ONLY_MACRO_${arch}}=1 -fno-builtin -I${JP_KERNEL_SRC}
 				-o ${kernel}
 			DEPENDS ${JP_TEST_KERNEL_SOURCES}
+				${JP_KERNEL_COMMON_SOURCES}
+				${JP_KERNEL_SRC}/cpu_regs_${arch}.c ${JP_KERNEL_SRC}/paging_hw_${arch}.c
+				${JP_KERNEL_SRC}/stack_hw_${arch}.c ${JP_KERNEL_SRC}/halt_hw_${arch}.c
+				${JP_KERNEL_SRC}/entry_${arch}.S
 				${JP_TEST_KERNEL_DIR}/serial_${arch}.c
 				${JP_TEST_KERNEL_DIR}/wait_${arch}.c
 				${JP_TEST_KERNEL_DIR}/screen.h
@@ -270,6 +290,38 @@ target_include_directories(test_uefi PRIVATE ${CMAKE_SOURCE_DIR}/src/boot/platfo
 jp_link_module_if_exists(test_uefi src/boot/platform/uefi.c)
 
 # The BIOS provider. The port read (the PS/2 controller) is faked by the test.
+jp_add_unit_test(test_cpu tests/unit/kernel/test_cpu.c)
+target_include_directories(test_cpu PRIVATE ${CMAKE_SOURCE_DIR}/src/kernel)
+jp_link_module_if_exists(test_cpu src/kernel/cpu.c)
+
+jp_add_unit_test(test_paging tests/unit/kernel/test_paging.c)
+target_include_directories(test_paging PRIVATE ${CMAKE_SOURCE_DIR}/src/kernel)
+jp_link_module_if_exists(test_paging src/kernel/paging.c)
+jp_link_module_if_exists(test_paging src/kernel/memory.c)
+
+jp_add_unit_test(test_stack tests/unit/kernel/test_stack.c)
+target_include_directories(test_stack PRIVATE ${CMAKE_SOURCE_DIR}/src/kernel)
+jp_link_module_if_exists(test_stack src/kernel/stack.c)
+jp_link_module_if_exists(test_stack src/kernel/memory.c)
+
+jp_add_unit_test(test_heap tests/unit/kernel/test_heap.c)
+target_include_directories(test_heap PRIVATE ${CMAKE_SOURCE_DIR}/src/kernel)
+jp_link_module_if_exists(test_heap src/kernel/heap.c)
+jp_link_module_if_exists(test_heap src/kernel/memory.c)
+
+jp_add_unit_test(test_elf tests/unit/kernel/test_elf.c)
+target_include_directories(test_elf PRIVATE ${CMAKE_SOURCE_DIR}/src/kernel)
+jp_link_module_if_exists(test_elf src/kernel/elf.c)
+jp_link_module_if_exists(test_elf src/kernel/memory.c)
+
+jp_add_unit_test(test_init tests/unit/kernel/test_init.c)
+target_include_directories(test_init PRIVATE ${CMAKE_SOURCE_DIR}/src/kernel)
+jp_link_module_if_exists(test_init src/kernel/init.c)
+
+jp_add_unit_test(test_memory tests/unit/kernel/test_memory.c)
+target_include_directories(test_memory PRIVATE ${CMAKE_SOURCE_DIR}/src/kernel)
+jp_link_module_if_exists(test_memory src/kernel/memory.c)
+
 jp_add_unit_test(test_bios tests/unit/boot/test_bios.c)
 target_include_directories(test_bios PRIVATE ${CMAKE_SOURCE_DIR}/src/boot/platform)
 jp_link_module_if_exists(test_bios src/boot/platform/bios.c)
