@@ -28,6 +28,8 @@ typedef struct HookProbe {
 	JPHandoffState seen_handoff_state;
 	unsigned int seen_platform_calls;
 	size_t seen_arch_calls;
+	bool seen_interrupts_disabled;
+	unsigned int seen_reserve_calls;
 	JPFakeEnvironment *fake;
 	void (*mutate)(JPBootContext *);   /* lets a test damage the handoff from the hook */
 } HookProbe;
@@ -44,6 +46,8 @@ static JPBootResult hook(JPBootContext *context, void *user_data)
 	probe.seen_handoff_state = context->handoff.state;
 	probe.seen_platform_calls = fake.prepare_handoff_calls;
 	probe.seen_arch_calls = jp_fake_arch.call_count;
+	probe.seen_interrupts_disabled = context->handoff.interrupts_disabled;
+	probe.seen_reserve_calls = fake.reserve_calls;
 	if (probe.mutate != NULL) {
 		probe.mutate(context);
 	}
@@ -255,8 +259,11 @@ static void test_hook_runs_once_at_the_right_moment(void)
 	assert(probe.calls == 1);
 	assert(probe.seen_context == &context);
 	assert(probe.seen_user_data == &user_data_marker);
-	assert(probe.seen_handoff_state == JP_HANDOFF_STATE_PREREQUISITES_VALID);
-	assert(probe.seen_arch_calls == 3);            /* after all architecture steps */
+	assert(probe.seen_handoff_state == JP_HANDOFF_STATE_UNINITIALIZED);
+	assert(probe.seen_arch_calls == 0);            /* before every architecture step: they mask the interrupts */
+	assert(probe.seen_interrupts_disabled == false);
+	assert(probe.seen_reserve_calls == 1);         /* after the stack was reserved */
+	assert(jp_fake_arch.call_count == 3);          /* the architecture steps ran after the hook */
 	assert(probe.seen_platform_calls == 0);        /* before the platform handoff */
 	assert(context.interaction.state == JP_BOOT_INTERACTION_COMPLETED);
 	assert(context.handoff.state == JP_HANDOFF_STATE_READY);
@@ -271,6 +278,7 @@ static void test_failing_hook_fails_the_handoff(void)
 	assert(jp_boot_register_interaction(&context, hook, NULL) == JP_BOOT_SUCCESS);
 	assert(jp_boot_prepare_handoff(&context) == JP_BOOT_ERROR_CORRUPTED_DATA);
 	assert(probe.calls == 1);
+	assert(jp_fake_arch.call_count == 0);          /* the hook failed before the architecture steps */
 	assert(context.interaction.state == JP_BOOT_INTERACTION_FAILED);
 	assert(context.handoff.state == JP_HANDOFF_STATE_FAILED);
 	assert(context.current_stage != JP_BOOT_STAGE_READY);
@@ -379,7 +387,9 @@ static void test_hook_that_was_not_registered_does_not_run(void)
 	assert(context.interaction.state == JP_BOOT_INTERACTION_NOT_REGISTERED);
 }
 
-/* Damage that appears after the architecture steps is found by the final check. */
+/* Damage that appears after the architecture steps (in the platform step) is found by the final check. */
+static void (*damage_in_platform_step)(JPBootContext *);
+static void damage_platform_step(JPBootContext *context) { damage_in_platform_step(context); }
 static void damage_page_table_root(JPBootContext *c) { c->handoff.page_table_root = 0; }
 static void damage_paging(JPBootContext *c) { c->handoff.paging_enabled = false; }
 static void damage_interrupts(JPBootContext *c) { c->handoff.interrupts_disabled = false; }
@@ -400,8 +410,8 @@ static void test_final_check_finds_a_damaged_handoff(void)
 		JPBootContext context;
 
 		prepare(&context);
-		probe.mutate = damage[i];
-		assert(jp_boot_register_interaction(&context, hook, NULL) == JP_BOOT_SUCCESS);
+		damage_in_platform_step = damage[i];
+		fake.on_prepare_handoff = damage_platform_step;
 		assert(jp_boot_prepare_handoff(&context) == JP_BOOT_FAILED);
 		assert(context.handoff.state == JP_HANDOFF_STATE_FAILED);
 		assert(context.current_stage != JP_BOOT_STAGE_READY);

@@ -1,11 +1,11 @@
 # JustOS Development Progress
 
 ## Milestone 0 — Boot & Startup Infrastructure
-- [ ] Stage 1 — Boot Pipeline Foundation
-- [ ] Stage 2 — Platform Initialization
-- [ ] Stage 3 — Boot Diagnostics & Recovery
-- [ ] Stage 4 — Boot manager & UI
-- [ ] Milestone 0 Completed
+- [x] Stage 1 — Boot Pipeline Foundation
+- [x] Stage 2 — Platform Initialization
+- [x] Stage 3 — Boot Diagnostics & Recovery
+- [x] Stage 4 — Boot manager & UI
+- [x] Milestone 0 Completed
 
 ---
 
@@ -73,7 +73,7 @@
 
 # Overall Progress
 
-- [ ] Milestone 0
+- [x] Milestone 0
 - [ ] Milestone 1
 - [ ] Milestone 2
 - [ ] Milestone 3

@@ -58,6 +58,22 @@ jp_aarch64_jump_to_kernel:
 	mov x12, x3                      /* entry */
 	mov x13, x4                      /* context */
 
+	/*
+	 * At EL1 the firmware's own page tables are live: switch the MMU off before the registers change.
+	 * Otherwise the new TCR_EL1 changes how those tables are read (on a processor with LPA2 the firmware
+	 * sets TCR_EL1.DS), and the next instruction fetch faults. This code runs from the identity-mapped
+	 * boot application and uses only registers until the MMU is on again. At EL2 the firmware uses the
+	 * EL2 registers, so nothing is needed there.
+	 */
+	mrs x5, CurrentEL
+	lsr x5, x5, #2
+	cmp x5, #1
+	b.ne 5f
+	mrs x6, sctlr_el1
+	bic x6, x6, #1                   /* SCTLR_EL1.M */
+	msr sctlr_el1, x6
+	isb
+5:
 	/* MAIR_EL1: attribute 0 is device memory, attribute 1 is normal write-back memory. */
 	mov x6, #0xff00
 	msr mair_el1, x6

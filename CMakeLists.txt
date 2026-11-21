@@ -141,17 +141,18 @@ if(JP_ENABLE_QEMU_TESTS)
 		${JP_TEST_KERNEL_DIR}/screen.c
 		${JP_TEST_KERNEL_DIR}/font8x16.c
 		${JP_TEST_KERNEL_DIR}/wait_common.c
+		${JP_TEST_KERNEL_DIR}/stage_lines.c
 	)
 
 	# Stage 2 (src/kernel): the test kernel starts through the Stage 2 entry stub, so the QEMU test runs the
 	# real Stage 2. Only the stand-in for the Stage 4 continuation is test code.
 	set(JP_KERNEL_SRC ${CMAKE_SOURCE_DIR}/src/kernel)
-	set(JP_BOOT_STAGE3_DIR ${CMAKE_SOURCE_DIR}/src/boot)   # the Stage 3 files live in src/boot and are linked into the kernel
+	set(JP_BOOT_STAGE3_DIR ${CMAKE_SOURCE_DIR}/src/boot)   # the Stage 3 and Stage 4 files live in src/boot and are linked into the kernel (Stage 4: phase B)
 	set(JP_KERNEL_COMMON_SOURCES
 		${JP_KERNEL_SRC}/cpu.c ${JP_KERNEL_SRC}/memory.c ${JP_KERNEL_SRC}/paging.c ${JP_KERNEL_SRC}/stack.c
 		${JP_KERNEL_SRC}/heap.c ${JP_KERNEL_SRC}/elf.c ${JP_KERNEL_SRC}/init.c
-		${JP_TEST_KERNEL_DIR}/fake_stage2_complete.c ${JP_TEST_KERNEL_DIR}/fake_boot_manager.c
-		${JP_TEST_KERNEL_DIR}/fake_stage3_lines.c
+		${JP_BOOT_STAGE3_DIR}/boot_manager.c ${JP_BOOT_STAGE3_DIR}/boot_config.c ${JP_BOOT_STAGE3_DIR}/boot_info.c
+		${JP_BOOT_STAGE3_DIR}/boot_ui.c
 		${JP_BOOT_STAGE3_DIR}/boot_log.c ${JP_BOOT_STAGE3_DIR}/boot_status.c ${JP_BOOT_STAGE3_DIR}/error.c
 		${JP_BOOT_STAGE3_DIR}/diagnostic_output.c ${JP_BOOT_STAGE3_DIR}/diagnostic_font.c
 		${JP_BOOT_STAGE3_DIR}/boot_report.c ${JP_BOOT_STAGE3_DIR}/panic.c ${JP_BOOT_STAGE3_DIR}/recovery.c
@@ -165,9 +166,9 @@ if(JP_ENABLE_QEMU_TESTS)
 	set(JP_TEST_KERNEL_ARCH_FLAGS_x86_64 -mgeneral-regs-only -mno-red-zone -mcmodel=kernel)
 	set(JP_TEST_KERNEL_ARCH_FLAGS_aarch64 "")
 
-	# jp_add_test_kernel_variant(<platform> <clang target> <architecture> <variant> <extra sources> <excluded source regexes>)
+	# jp_add_test_kernel_variant(<platform> <clang target> <architecture> <variant> <extra sources> <excluded source regexes> <extra compiler flags>)
 	# builds build/qemu/<platform>/test_kernel_<variant>.elf: the common kernel sources without the excluded ones, plus the extras.
-	function(jp_add_test_kernel_variant platform target arch variant extra excluded)
+	function(jp_add_test_kernel_variant platform target arch variant extra excluded flags)
 		set(out_dir ${CMAKE_BINARY_DIR}/qemu/${platform})
 		set(variant_kernel ${out_dir}/test_kernel_${variant}.elf)
 		set(variant_sources ${JP_KERNEL_COMMON_SOURCES})
@@ -185,11 +186,11 @@ if(JP_ENABLE_QEMU_TESTS)
 				${JP_TEST_KERNEL_SOURCES}
 				${JP_TEST_KERNEL_DIR}/serial_${arch}.c
 				${JP_TEST_KERNEL_DIR}/wait_${arch}.c
-				${variant_sources} ${extra}
+				${variant_sources} ${extra} ${flags}
 				${JP_KERNEL_SRC}/cpu_regs_${arch}.c ${JP_KERNEL_SRC}/paging_hw_${arch}.c
 				${JP_KERNEL_SRC}/stack_hw_${arch}.c ${JP_KERNEL_SRC}/halt_hw_${arch}.c
 				${JP_KERNEL_SRC}/entry_${arch}.S ${JP_BOOT_STAGE3_DIR}/diagnostic_hw_${arch}.c
-				-D${JP_KERNEL_ONLY_MACRO_${arch}}=1 -D${JP_BOOT_ONLY_MACRO_${arch}}=1 -fno-builtin -I${JP_KERNEL_SRC} -I${JP_BOOT_STAGE3_DIR}
+				-D${JP_KERNEL_ONLY_MACRO_${arch}}=1 -D${JP_BOOT_ONLY_MACRO_${arch}}=1 -DJP_BOOT_STAGE4_PHASE_B=1 -fno-builtin -I${JP_KERNEL_SRC} -I${JP_BOOT_STAGE3_DIR}
 				-o ${variant_kernel}
 			DEPENDS ${JP_TEST_KERNEL_SOURCES} ${variant_sources} ${extra}
 				${JP_TEST_KERNEL_DIR}/serial_${arch}.c ${JP_TEST_KERNEL_DIR}/wait_${arch}.c
@@ -222,7 +223,7 @@ if(JP_ENABLE_QEMU_TESTS)
 				${JP_KERNEL_SRC}/cpu_regs_${arch}.c ${JP_KERNEL_SRC}/paging_hw_${arch}.c
 				${JP_KERNEL_SRC}/stack_hw_${arch}.c ${JP_KERNEL_SRC}/halt_hw_${arch}.c
 				${JP_KERNEL_SRC}/entry_${arch}.S ${JP_BOOT_STAGE3_DIR}/diagnostic_hw_${arch}.c
-				-D${JP_KERNEL_ONLY_MACRO_${arch}}=1 -D${JP_BOOT_ONLY_MACRO_${arch}}=1 -fno-builtin -I${JP_KERNEL_SRC} -I${JP_BOOT_STAGE3_DIR}
+				-D${JP_KERNEL_ONLY_MACRO_${arch}}=1 -D${JP_BOOT_ONLY_MACRO_${arch}}=1 -DJP_BOOT_STAGE4_PHASE_B=1 -fno-builtin -I${JP_KERNEL_SRC} -I${JP_BOOT_STAGE3_DIR}
 				-o ${kernel}
 			DEPENDS ${JP_TEST_KERNEL_SOURCES}
 				${JP_KERNEL_COMMON_SOURCES}
@@ -239,22 +240,45 @@ if(JP_ENABLE_QEMU_TESTS)
 				${JP_TEST_KERNEL_DIR}/report.h
 			VERBATIM
 		)
-		# The same test kernel with the ELF check replaced by a fake that fails: the entry stub must take the failure path.
-		jp_add_test_kernel_variant(${platform} ${target} ${arch} stage2_failure "${JP_TEST_KERNEL_DIR}/fake_elf_failure.c" "/elf\\.c$")
-		add_test(NAME qemu_${platform}_stage2_failure
-			COMMAND ${CMAKE_SOURCE_DIR}/tests/qemu/run_test.sh ${platform} ${CMAKE_BINARY_DIR} stage2_failure)
-		set_tests_properties(qemu_${platform}_stage2_failure PROPERTIES LABELS qemu TIMEOUT 120)
-		# Stage 2 fails and the Stage 4 stand-in refuses the recovery transition: Stage 3 must show the panic screen.
-		# The processor stops, so this variant is run by tests/qemu/run_panic_test.py (serial log and a real screen dump).
-		jp_add_test_kernel_variant(${platform} ${target} ${arch} panic
-			"${JP_TEST_KERNEL_DIR}/fake_elf_failure.c;${JP_TEST_KERNEL_DIR}/fake_boot_manager_rejects.c" "/elf\\.c$;/fake_boot_manager\\.c$")
+		# The same test kernel with the ELF check replaced by a fake that fails. Stage 2 fails with a result that
+		# Stage 3 can recover from: the real Stage 4 enters the recovery diagnostics state, which never ends, so
+		# tests/qemu/run_observed_test.py watches it from outside (serial log and a real screen dump).
+		jp_add_test_kernel_variant(${platform} ${target} ${arch} recovery "${JP_TEST_KERNEL_DIR}/fake_elf_failure.c" "/elf\\.c$" "")
+		add_test(NAME qemu_${platform}_recovery
+			COMMAND python3 ${CMAKE_SOURCE_DIR}/tests/qemu/run_observed_test.py ${platform} ${CMAKE_BINARY_DIR} recovery)
+		set_tests_properties(qemu_${platform}_recovery PROPERTIES LABELS qemu TIMEOUT 120)
+		# The same, with a result that Stage 3 cannot recover from: Stage 4 decides TERMINAL_HALT, and Stage 3 shows the panic screen.
+		jp_add_test_kernel_variant(${platform} ${target} ${arch} panic "${JP_TEST_KERNEL_DIR}/fake_elf_failure.c" "/elf\\.c$"
+			"-DJP_TEST_ELF_FAILURE_RESULT=JP_BOOT_ERROR_INVALID_PARAM")
 		add_test(NAME qemu_${platform}_panic
-			COMMAND python3 ${CMAKE_SOURCE_DIR}/tests/qemu/run_panic_test.py ${platform} ${CMAKE_BINARY_DIR})
+			COMMAND python3 ${CMAKE_SOURCE_DIR}/tests/qemu/run_observed_test.py ${platform} ${CMAKE_BINARY_DIR} panic)
 		set_tests_properties(qemu_${platform}_panic PROPERTIES LABELS qemu TIMEOUT 120)
+		# The kernel for a person at a machine (scripts/make_manual_images.sh): the same test kernel, but it waits 40 seconds or ESC
+		# after it has shown the data list (no JP_TEST_KERNEL_NO_WAIT), so that the screen can be read.
+		jp_add_test_kernel_variant(${platform} ${target} ${arch} manual "" "" "-UJP_TEST_KERNEL_NO_WAIT")
+		# The menu: the boot application is built with the INTERACTIVE policy, and the test sends keys through the QEMU control socket.
+		set(menu_scenarios menu_apply menu_recovery)
+		foreach(scenario ${menu_scenarios})
+			add_test(NAME qemu_${platform}_${scenario}
+				COMMAND python3 ${CMAKE_SOURCE_DIR}/tests/qemu/run_observed_test.py ${platform} ${CMAKE_BINARY_DIR} ${scenario})
+			set_tests_properties(qemu_${platform}_${scenario} PROPERTIES LABELS qemu TIMEOUT 120)
+		endforeach()
 		add_custom_target(test_kernel_${platform} ALL DEPENDS ${kernel})
 		add_test(NAME qemu_${platform}
 			COMMAND ${CMAKE_SOURCE_DIR}/tests/qemu/run_test.sh ${platform} ${CMAKE_BINARY_DIR})
 		set_tests_properties(qemu_${platform} PROPERTIES LABELS qemu TIMEOUT 120)
+		# AArch64 only: the same test on the processor libvirt uses by default ("max": every feature, for example LPA2, whose
+		# firmware sets TCR_EL1.DS and broke the jump while the MMU was on) and with the boot program at EL2.
+		if(arch STREQUAL "aarch64")
+			add_test(NAME qemu_${platform}_cpu_max
+				COMMAND ${CMAKE_COMMAND} -E env JP_QEMU_CPU=max
+					${CMAKE_SOURCE_DIR}/tests/qemu/run_test.sh ${platform} ${CMAKE_BINARY_DIR})
+			set_tests_properties(qemu_${platform}_cpu_max PROPERTIES LABELS qemu TIMEOUT 120)
+			add_test(NAME qemu_${platform}_el2
+				COMMAND ${CMAKE_COMMAND} -E env JP_QEMU_MACHINE=virt,virtualization=on
+					${CMAKE_SOURCE_DIR}/tests/qemu/run_test.sh ${platform} ${CMAKE_BINARY_DIR})
+			set_tests_properties(qemu_${platform}_el2 PROPERTIES LABELS qemu TIMEOUT 120)
+		endif()
 		# The same test with KVM acceleration (x86_64 only; ctest -L kvm).
 		if(arch STREQUAL "x86_64")
 			add_test(NAME qemu_kvm_${platform}
@@ -273,26 +297,33 @@ if(JP_ENABLE_QEMU_TESTS)
 		${JP_BOOT_SRC}/kernel_loader.c ${JP_BOOT_SRC}/handoff.c
 		${JP_BOOT_SRC}/platform/uefi.c ${JP_BOOT_SRC}/platform/uefi_entry.c
 	)
+	# Stage 4, phase A (the boot program): the manager, the configuration, the summary, the menu with its font,
+	# and the Stage 3 status module that the summary reads (the status says NOT INITIALIZED before Stage 3 starts).
+	set(JP_BOOT_STAGE4_PHASE_A_SOURCES
+		${JP_BOOT_SRC}/boot_manager.c ${JP_BOOT_SRC}/boot_config.c ${JP_BOOT_SRC}/boot_info.c
+		${JP_BOOT_SRC}/boot_ui.c ${JP_BOOT_SRC}/boot_ui_font.c ${JP_BOOT_SRC}/boot_status.c ${JP_BOOT_SRC}/boot_log.c)
 
-	# jp_add_boot_app(<platform> <clang target> <architecture, for the macro and the file names> <macro>)
-	function(jp_add_boot_app platform target arch macro)
+	# jp_add_boot_app(<platform> <clang target> <architecture, for the macro and the file names> <macro> <policy> <file name>)
+	# <policy> is DEFAULT_ONLY (no menu: the automatic tests) or INTERACTIVE (the menu waits for keys).
+	function(jp_add_boot_app platform target arch macro policy file_name)
 		set(app_dir ${CMAKE_BINARY_DIR}/qemu/${platform})
-		set(sources ${JP_BOOT_APP_COMMON_SOURCES}
+		set(sources ${JP_BOOT_APP_COMMON_SOURCES} ${JP_BOOT_STAGE4_PHASE_A_SOURCES}
 			${JP_BOOT_SRC}/architecture/${arch}.c ${JP_BOOT_SRC}/architecture/${arch}_enter.S)
 		add_custom_command(
-			OUTPUT ${app_dir}/boot.efi
+			OUTPUT ${app_dir}/${file_name}
 			COMMAND ${CMAKE_COMMAND} -E make_directory ${app_dir}
 			COMMAND ${JP_CLANG} --target=${target} -std=c17 -ffreestanding
 				-fno-stack-protector -fshort-wchar -O2 -Wall -Wextra -Wpedantic -Werror
 				-Wconversion -Wshadow -Wmissing-prototypes -Wstrict-prototypes
 				-DJP_BOOT_WITHOUT_BIOS=1 -D${macro}=1
+				-DJP_BOOT_STAGE4_PHASE_A=1 -DJP_BOOT_SELECTION_POLICY=JP_BOOT_SELECTION_POLICY_${policy}
 				-I${CMAKE_SOURCE_DIR}/include -I${JP_BOOT_SRC} -I${JP_BOOT_SRC}/platform -I${JP_BOOT_SRC}/architecture
 				-fuse-ld=lld -nostdlib -Wl,/subsystem:efi_application -Wl,/entry:efi_main
-				${sources} -o ${app_dir}/boot.efi
+				${sources} -o ${app_dir}/${file_name}
 			DEPENDS ${sources}
 			VERBATIM
 		)
-		add_custom_target(boot_app_${platform} ALL DEPENDS ${app_dir}/boot.efi)
+		add_custom_target(boot_app_${platform}_${policy} ALL DEPENDS ${app_dir}/${file_name})
 	endfunction()
 
 	# The BIOS boot chain: the boot sector (512 bytes) and the loader (one flat binary: the 16-bit
@@ -307,7 +338,8 @@ if(JP_ENABLE_QEMU_TESTS)
 			${JP_BOOT_SRC}/boot_pipeline.c ${JP_BOOT_SRC}/boot_environment.c ${JP_BOOT_SRC}/hardware.c
 			${JP_BOOT_SRC}/memory_map.c ${JP_BOOT_SRC}/framebuffer.c ${JP_BOOT_SRC}/kernel_image.c
 			${JP_BOOT_SRC}/kernel_loader.c ${JP_BOOT_SRC}/handoff.c
-			${JP_BOOT_SRC}/architecture/x86_64.c ${JP_BOOT_SRC}/architecture/x86_64_enter.S)
+			${JP_BOOT_SRC}/architecture/x86_64.c ${JP_BOOT_SRC}/architecture/x86_64_enter.S
+			${JP_BOOT_STAGE4_PHASE_A_SOURCES})
 		add_custom_command(
 			OUTPUT ${app_dir}/boot_sector.bin
 			COMMAND ${CMAKE_COMMAND} -E make_directory ${app_dir}
@@ -316,25 +348,36 @@ if(JP_ENABLE_QEMU_TESTS)
 			DEPENDS ${plat}/bios_boot_sector.S ${plat}/bios_boot_sector.ld
 			VERBATIM
 		)
-		add_custom_command(
-			OUTPUT ${app_dir}/loader.bin
-			COMMAND ${CMAKE_COMMAND} -E make_directory ${app_dir}
-			COMMAND ${JP_CLANG} ${common_flags} -std=c17 -mno-red-zone -mgeneral-regs-only -fno-stack-protector
-				-fno-asynchronous-unwind-tables -O2 -Wall -Wextra -Wpedantic -Werror -Wconversion
-				-Wshadow -Wmissing-prototypes -Wstrict-prototypes
-				-DJP_BOOT_ONLY_X86_64=1 -DJP_BOOT_WITHOUT_UEFI=1
-				-I${CMAKE_SOURCE_DIR}/include -I${JP_BOOT_SRC} -I${plat} -I${JP_BOOT_SRC}/architecture
-				-Wl,-T,${plat}/bios_loader.ld -Wl,--oformat=binary
-				${loader_sources} -o ${app_dir}/loader.bin
-			DEPENDS ${loader_sources} ${plat}/bios_loader.ld ${plat}/bios_io.h
-			VERBATIM
-		)
-		add_custom_target(boot_chain_x86_64-bios ALL DEPENDS ${app_dir}/boot_sector.bin ${app_dir}/loader.bin)
+		# The loader exists twice: DEFAULT_ONLY (loader.bin, no menu) and INTERACTIVE (loader_interactive.bin).
+		foreach(policy DEFAULT_ONLY INTERACTIVE)
+			if(policy STREQUAL "INTERACTIVE")
+				set(loader_file loader_interactive.bin)
+			else()
+				set(loader_file loader.bin)
+			endif()
+			add_custom_command(
+				OUTPUT ${app_dir}/${loader_file}
+				COMMAND ${CMAKE_COMMAND} -E make_directory ${app_dir}
+				COMMAND ${JP_CLANG} ${common_flags} -std=c17 -mno-red-zone -mgeneral-regs-only -fno-stack-protector
+					-fno-asynchronous-unwind-tables -O2 -Wall -Wextra -Wpedantic -Werror -Wconversion
+					-Wshadow -Wmissing-prototypes -Wstrict-prototypes
+					-DJP_BOOT_ONLY_X86_64=1 -DJP_BOOT_WITHOUT_UEFI=1
+					-DJP_BOOT_STAGE4_PHASE_A=1 -DJP_BOOT_SELECTION_POLICY=JP_BOOT_SELECTION_POLICY_${policy}
+					-I${CMAKE_SOURCE_DIR}/include -I${JP_BOOT_SRC} -I${plat} -I${JP_BOOT_SRC}/architecture
+					-Wl,-T,${plat}/bios_loader.ld -Wl,--oformat=binary
+					${loader_sources} -o ${app_dir}/${loader_file}
+				DEPENDS ${loader_sources} ${plat}/bios_loader.ld ${plat}/bios_io.h
+				VERBATIM
+			)
+		endforeach()
+		add_custom_target(boot_chain_x86_64-bios ALL DEPENDS ${app_dir}/boot_sector.bin ${app_dir}/loader.bin ${app_dir}/loader_interactive.bin)
 	endfunction()
 
 	jp_add_bios_boot_chain()
-	jp_add_boot_app(x86_64-uefi x86_64-pc-windows-msvc x86_64 JP_BOOT_ONLY_X86_64)
-	jp_add_boot_app(aarch64-uefi aarch64-pc-windows-msvc aarch64 JP_BOOT_ONLY_AARCH64)
+	jp_add_boot_app(x86_64-uefi x86_64-pc-windows-msvc x86_64 JP_BOOT_ONLY_X86_64 DEFAULT_ONLY boot.efi)
+	jp_add_boot_app(x86_64-uefi x86_64-pc-windows-msvc x86_64 JP_BOOT_ONLY_X86_64 INTERACTIVE boot_interactive.efi)
+	jp_add_boot_app(aarch64-uefi aarch64-pc-windows-msvc aarch64 JP_BOOT_ONLY_AARCH64 DEFAULT_ONLY boot.efi)
+	jp_add_boot_app(aarch64-uefi aarch64-pc-windows-msvc aarch64 JP_BOOT_ONLY_AARCH64 INTERACTIVE boot_interactive.efi)
 
 	jp_add_qemu_test(x86_64-uefi x86_64-unknown-none-elf x86_64)
 	jp_add_qemu_test(x86_64-bios x86_64-unknown-none-elf x86_64)
@@ -406,6 +449,58 @@ jp_link_module_if_exists(test_recovery src/boot/boot_report.c)
 jp_link_module_if_exists(test_recovery src/boot/error.c)
 jp_link_module_if_exists(test_recovery src/boot/boot_status.c)
 jp_link_module_if_exists(test_recovery src/boot/boot_log.c)
+
+# Stage 4 (boot manager and boot UI).
+jp_add_unit_test(test_boot_config tests/unit/stage4/test_boot_config.c)
+jp_link_module_if_exists(test_boot_config src/boot/boot_config.c)
+
+jp_add_unit_test(test_boot_info tests/unit/stage4/test_boot_info.c)
+jp_link_module_if_exists(test_boot_info src/boot/boot_info.c)
+jp_link_module_if_exists(test_boot_info src/boot/boot_status.c)
+jp_link_module_if_exists(test_boot_info src/boot/boot_log.c)
+
+# The menu (phase A of boot_ui.c). The glyphs of the test kernel (an independent copy) read the screen back.
+jp_add_unit_test(test_boot_ui tests/unit/stage4/test_boot_ui.c)
+target_include_directories(test_boot_ui PRIVATE ${CMAKE_SOURCE_DIR}/src/boot ${CMAKE_SOURCE_DIR}/tests/qemu/test_kernel)
+target_compile_definitions(test_boot_ui PRIVATE JP_BOOT_STAGE4_PHASE_A=1)
+target_sources(test_boot_ui PRIVATE tests/qemu/test_kernel/font8x16.c)
+jp_link_module_if_exists(test_boot_ui src/boot/boot_ui.c)
+jp_link_module_if_exists(test_boot_ui src/boot/boot_ui_font.c)
+jp_link_module_if_exists(test_boot_ui src/boot/boot_config.c)
+jp_link_module_if_exists(test_boot_ui src/boot/boot_info.c)
+jp_link_module_if_exists(test_boot_ui src/boot/boot_status.c)
+jp_link_module_if_exists(test_boot_ui src/boot/boot_log.c)
+
+# The text screens (phase B of boot_ui.c). The output function is a fake in the test.
+jp_add_unit_test(test_boot_ui_text tests/unit/stage4/test_boot_ui_text.c)
+target_include_directories(test_boot_ui_text PRIVATE ${CMAKE_SOURCE_DIR}/src/boot)
+target_compile_definitions(test_boot_ui_text PRIVATE JP_BOOT_STAGE4_PHASE_B=1)
+jp_link_module_if_exists(test_boot_ui_text src/boot/boot_ui.c)
+jp_link_module_if_exists(test_boot_ui_text src/boot/boot_config.c)
+jp_link_module_if_exists(test_boot_ui_text src/boot/boot_info.c)
+jp_link_module_if_exists(test_boot_ui_text src/boot/boot_status.c)
+jp_link_module_if_exists(test_boot_ui_text src/boot/boot_log.c)
+jp_link_module_if_exists(test_boot_ui_text src/boot/error.c)
+
+# The Boot Manager, phase A (prepare and select), built once for each selection policy.
+foreach(policy INTERACTIVE DEFAULT_ONLY)
+	string(TOLOWER ${policy} policy_lower)
+	set(name test_boot_manager_select_${policy_lower})
+	jp_add_unit_test(${name} tests/unit/stage4/test_boot_manager_select.c)
+	target_include_directories(${name} PRIVATE ${CMAKE_SOURCE_DIR}/src/boot)
+	target_compile_definitions(${name} PRIVATE JP_BOOT_STAGE4_PHASE_A=1 JP_BOOT_SELECTION_POLICY=JP_BOOT_SELECTION_POLICY_${policy})
+	jp_link_module_if_exists(${name} src/boot/boot_manager.c)
+	jp_link_module_if_exists(${name} src/boot/boot_config.c)
+endforeach()
+
+# The Boot Manager, phase B (completion, decision, recovery request). The real Stage 3 modules keep the records;
+# the machine access, the panic screen, the text output, and kernel_main are fakes in the test.
+jp_add_unit_test(test_boot_manager tests/unit/stage4/test_boot_manager.c)
+target_include_directories(test_boot_manager PRIVATE ${CMAKE_SOURCE_DIR}/src/boot)
+target_compile_definitions(test_boot_manager PRIVATE JP_BOOT_STAGE4_PHASE_B=1)
+foreach(module boot_manager boot_config boot_info boot_ui boot_status boot_log error boot_report recovery)
+	jp_link_module_if_exists(test_boot_manager src/boot/${module}.c)
+endforeach()
 
 jp_add_unit_test(test_error tests/unit/diagnostics/test_error.c)
 jp_link_module_if_exists(test_error src/boot/error.c)

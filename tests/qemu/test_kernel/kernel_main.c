@@ -17,6 +17,7 @@
 #include "platform.h"
 #include "report.h"
 #include "screen.h"
+#include "stage_lines.h"
 #include "wait.h"
 
 #define JP_TEST_WAIT_SECONDS 40
@@ -35,6 +36,7 @@ void kernel_main(JPBootContext *context)
 	bool pass = false;
 
 	if (context != NULL) {
+		jp_test_stage_lines_emit(context, &sink);       /* what the real Stage 3 and Stage 4 left in the context */
 		pass = jp_test_report_emit(context, &sink);
 		/* In Milestone 0 the framebuffer is reached at its physical address. */
 		jp_test_screen_show(context, (void *)(uintptr_t)context->framebuffer.base_address);

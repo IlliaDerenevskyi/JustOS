@@ -371,18 +371,11 @@ typedef struct JPBootStage2Area {
 #include "justos/boot/diagnostic_types.h"
 
 /*
- * Stage 4 owns the contents of its area; Stage 1 never reads, writes or
- * interprets it.
- *
- * TEMPORARY: the real type is defined by Stage 4. Until that stage exists, a
- * byte block of a generous size is reserved. When Stage 4 defines its type,
- * it replaces the block here, and the size constant is removed.
+ * The Stage 4 types (stage4_types.h) are included in the same way, for the
+ * same reason. Stage 4 owns the contents of its area; Stage 1 never reads,
+ * writes or interprets it.
  */
-#define JP_BOOT_STAGE4_AREA_RESERVED_BYTES 8192
-
-typedef struct JPBootStage4Area {
-	_Alignas(16) uint8_t reserved[JP_BOOT_STAGE4_AREA_RESERVED_BYTES];
-} JPBootStage4Area;
+#include "justos/boot/stage4_types.h"
 
 /* ---- Boot context ---- */
 

@@ -32,6 +32,9 @@
 #
 # Firmware files can be overridden by the environment variables
 # JP_OVMF_CODE, JP_OVMF_VARS (x86_64 UEFI) and JP_AAVMF_CODE (AArch64 UEFI).
+#
+# AArch64 UEFI only: JP_QEMU_CPU (default cortex-a72; libvirt uses "max", a processor with every feature, for example
+# LPA2) and JP_QEMU_MACHINE (default "virt"; "virt,virtualization=on" starts the boot program at EL2).
 
 set -euo pipefail
 
@@ -108,7 +111,7 @@ aarch64-uefi)
 	code="${JP_AAVMF_CODE:-/usr/share/edk2/aarch64/QEMU_EFI.fd}"
 	require_file "$code" "AArch64 UEFI firmware; set JP_AAVMF_CODE"
 	qemu=qemu-system-aarch64
-	args+=(-machine virt -cpu cortex-a72 -m 512
+	args+=(-machine "${JP_QEMU_MACHINE:-virt}" -cpu "${JP_QEMU_CPU:-cortex-a72}" -m 512
 		-bios "$code"
 		-drive "if=none,id=disk0,format=raw,file=${image}"
 		-device virtio-blk-pci,drive=disk0

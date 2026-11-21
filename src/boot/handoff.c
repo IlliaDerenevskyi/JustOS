@@ -7,8 +7,8 @@
  *
  * Responsibilities:
  *   - check that every Stage 1 prerequisite is satisfied;
- *   - place the kernel stack, call the architecture steps, run the hook
- *     exactly once, ask the provider to prepare the platform handoff;
+ *   - place the kernel stack, run the hook exactly once, call the
+ *     architecture steps, ask the provider to prepare the platform handoff;
  *   - set JP_HANDOFF_STATE_READY and JP_BOOT_STAGE_READY only after every
  *     step has really succeeded.
  *
@@ -185,8 +185,8 @@ static uint64_t stack_alignment(JPArchitectureType architecture)
 
 /*
  * The final check after the platform step: the normalized handoff fields must
- * still describe the architecture entry state (the hook and the platform step
- * ran after the architecture check).
+ * still describe the architecture entry state (the platform step ran after the
+ * architecture check).
  */
 static bool resulting_handoff_is_valid(const JPBootContext *context, JPArchitectureType architecture)
 {
@@ -261,16 +261,20 @@ JPBootResult jp_boot_prepare_handoff(JPBootContext *context)
 		JP_BOOT_KERNEL_STACK_SIZE) != JP_BOOT_SUCCESS) {
 		return fail_handoff(context, JP_BOOT_FAILED);
 	}
+	/*
+	 * The hook runs before the architecture steps: prepare_entry masks the
+	 * interrupts, and the keyboard of some firmware (AArch64 UEFI) works only
+	 * while they are not masked.
+	 */
+	result = run_interaction_hook(context);
+	if (result != JP_BOOT_SUCCESS) {
+		return fail_handoff(context, result);
+	}
 	result = run_architecture_steps(context);
 	if (result != JP_BOOT_SUCCESS) {
 		return fail_handoff(context, result);
 	}
 	context->handoff.state = JP_HANDOFF_STATE_PREREQUISITES_VALID;
-
-	result = run_interaction_hook(context);
-	if (result != JP_BOOT_SUCCESS) {
-		return fail_handoff(context, result);
-	}
 
 	result = jp_boot_environment_prepare_handoff(context);
 	if (result != JP_BOOT_SUCCESS) {

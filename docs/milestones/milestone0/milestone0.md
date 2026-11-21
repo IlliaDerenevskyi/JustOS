@@ -857,14 +857,17 @@ For BIOS, the specification defines the equivalent provider-specific transition 
 
 Stage 1 exposes one optional interaction point while provider services, including input, are still valid. It is the only point in Stage 1 where an external component may interact with the user.
 
-Position: after all handoff prerequisites are validated (`PREREQUISITES_VALID`) and before platform handoff preparation, which includes final platform state acquisition and final memory-map acquisition. No memory-map key is held across the interaction point, so provider services used during interaction cannot invalidate a key that is later used for the transition.
+Position: after the handoff prerequisites are checked and the kernel stack is placed and reserved, but before the architecture operations (`setup_paging`, `prepare_entry`, `validate_entry_state`) and before platform handoff preparation, which includes final platform state acquisition and final memory-map acquisition. The handoff state is still `UNINITIALIZED` while the hook runs. No memory-map key is held across the interaction point, so provider services used during interaction cannot invalidate a key that is later used for the transition.
+
+Why the hook runs before the architecture operations: `prepare_entry` masks the interrupts of the processor (the mask bits are set, so the processor ignores interrupt requests). The input of some firmware depends on interrupts: on AArch64 UEFI the USB and serial keyboard drivers of the firmware are driven by timer interrupts, so with the interrupts masked `ReadKeyStroke` never returns a key. On x86_64 the PS/2 controller is read directly and works either way. Running the hook while the interrupts are still in the state the firmware left them makes keyboard input work on every supported platform, and the hook needs nothing that the architecture operations produce (it reads input and draws on the framebuffer).
 
 Contract:
 
 - a caller registers at most one hook through `jp_boot_register_interaction()` before `jp_boot_prepare_handoff()`;
 - `jp_boot_prepare_handoff()` invokes the hook exactly once per handoff attempt, only at the position above;
 - with no hook registered the step is skipped and the interaction state remains `NOT_REGISTERED`; a skipped step is never reported as completed;
-- the hook may use `jp_boot_environment_read_input()` and may read the validated framebuffer, including writing pixels to the validated framebuffer region for presentation; it must not modify any other `JPBootContext` state, ownership, mappings, paging, stack, or provider state;
+- the hook may use `jp_boot_environment_read_input()` and may read the validated framebuffer, including writing pixels to the validated framebuffer region for presentation; it must not modify any other `JPBootContext` state, ownership, mappings, paging, stack, or provider state (a hook supplied by Stage 4 may write the Stage 4 area of the context, which Stage 1 never reads);
+- the hook must not change the interrupt mask; the architecture operations that run after it set the state they need;
 - if the hook returns anything other than `JP_BOOT_SUCCESS`, the interaction state becomes `FAILED`, handoff becomes `FAILED`, and the result is propagated without conversion;
 - Stage 1 does not name, implement, or depend on the hook's content or on Stage 4; the hook is an inverted dependency supplied by the caller;
 - from the start of final platform state acquisition onward (and therefore after the platform transition) no input is possible and `jp_boot_environment_read_input()` reports `JP_BOOT_NOT_INITIALIZED`.
@@ -2630,7 +2633,24 @@ BIOS services (memory map, video, disk, keyboard) can be called only in real mod
 
 **Kernel image.** The loader read `kernel.elf` into the staging area. `jp_bios_get_kernel_image()` returns that address and the size from the block; a block that says the kernel was not read is `JP_BOOT_NOT_DETECTED`.
 
-**Input.** BIOS keyboard services cannot be used in long mode, so `jp_bios_read_input()` reads the PS/2 keyboard controller directly (status port `0x64`, data port `0x60`, scan code set 1). A byte is waiting when bit 0 of the status is set. Make codes (key pressed) are mapped: `0x48` up, `0x50` down, `0x4D` right, `0x4B` left, `0x1C` Enter, `0x01` Escape, `0x44` F10, `0x0E` Backspace, and the keys of the letter and digit rows to their lower-case ASCII character; break codes (key released, bit 7 set) and everything else give `JP_BOOT_INPUT_NONE`. No byte waiting is also `JP_BOOT_INPUT_NONE` with success. Two details of the controller: if bit 5 of the status is set the waiting byte comes from the mouse; it is read (so that it does not block the controller) and gives `JP_BOOT_INPUT_NONE`. If the status port reads `0xFF` (a bus that nothing drives, so no controller exists), the result is `JP_BOOT_NOT_DETECTED`. The extended-key prefix byte `0xE0` is an unmappable byte (`JP_BOOT_INPUT_NONE`), and the byte that follows it is mapped like any other make code.
+**Input.** BIOS keyboard services cannot be used in long mode, so `jp_bios_read_input()` reads the PS/2 keyboard controller directly (status port `0x64`, data port `0x60`, scan code set 1). A byte is waiting when bit 0 of the status is set. Make codes (key pressed) are mapped: `0x48` up, `0x50` down, `0x4D` right, `0x4B` left, `0x1C` Enter, `0x01` Escape, `0x44` F10, `0x0E` Backspace, and the character keys to their ASCII character without Shift (the table is below); break codes (key released, bit 7 set) and everything else give `JP_BOOT_INPUT_NONE`. No byte waiting is also `JP_BOOT_INPUT_NONE` with success. Two details of the controller: if bit 5 of the status is set the waiting byte comes from the mouse; it is read (so that it does not block the controller) and gives `JP_BOOT_INPUT_NONE`. If the status port reads `0xFF` (a bus that nothing drives, so no controller exists), the result is `JP_BOOT_NOT_DETECTED`. The extended-key prefix byte `0xE0` is an unmappable byte (`JP_BOOT_INPUT_NONE`), and the byte that follows it is mapped like any other make code.
+
+The character keys, as scan code set 1 gives them (a US keyboard; the key gives the character printed on its lower half, because Shift is not tracked, so upper-case letters and the symbols on the upper half are not available in M0):
+
+| Scan codes | Characters |
+|---|---|
+| `0x02` to `0x0B` | `1` `2` `3` `4` `5` `6` `7` `8` `9` `0` |
+| `0x0C`, `0x0D` | `-` `=` |
+| `0x10` to `0x19` | `q` `w` `e` `r` `t` `y` `u` `i` `o` `p` |
+| `0x1A`, `0x1B` | `[` `]` |
+| `0x1E` to `0x26` | `a` `s` `d` `f` `g` `h` `j` `k` `l` |
+| `0x27`, `0x28`, `0x29` | `;` `'` `` ` `` |
+| `0x2B` | `\` |
+| `0x2C` to `0x32` | `z` `x` `c` `v` `b` `n` `m` |
+| `0x33`, `0x34`, `0x35` | `,` `.` `/` |
+| `0x39` | space |
+
+Every other scan code (Tab `0x0F`, Ctrl `0x1D`, the Shift keys `0x2A` and `0x36`, Alt `0x38`, Caps Lock `0x3A`, the function keys except F10, the keypad) is `JP_BOOT_INPUT_NONE`. This table is the whole list of printable characters the BIOS keyboard can type; the Boot UI accepts the characters 0x20 to 0x7E, so the menu fields can be edited with the keys above.
 
 **Reservation.** `jp_bios_reserve_memory()` records the rounded range in a private table of at most 64 ranges (a full table is `JP_BOOT_FAILED`) and checks that it lies inside a usable region of the memory map (otherwise `JP_BOOT_FAILED`).
 
@@ -3877,9 +3897,9 @@ None exposed.
 5. Validate kernel.
 6. Validate kernel mappings.
 7. Validate stack.
-8. Validate paging.
-9. Validate CPU entry state.
-10. Invoke the registered interaction hook, if any (exactly once).
+8. Invoke the registered interaction hook, if any (exactly once). It runs here, before the architecture operations, because those mask the interrupts and some firmware input needs them (see "Pre-Transition Interaction Point").
+9. Validate paging.
+10. Validate CPU entry state.
 11. Dispatch platform handoff preparation.
 12. Validate resulting handoff state.
 13. Set `JP_BOOT_STAGE_READY` only after all required conditions are satisfied.
@@ -3902,7 +3922,7 @@ Any failure produces:
 FAILED
 ```
 
-The interaction hook has its own lifecycle (`JPBootInteractionState`): `NOT_REGISTERED → REGISTERED → COMPLETED` or `FAILED`. Registration is valid only while the handoff state is `UNINITIALIZED`. The hook runs between `PREREQUISITES_VALID` and `PLATFORM_PREPARED`.
+The interaction hook has its own lifecycle (`JPBootInteractionState`): `NOT_REGISTERED → REGISTERED → COMPLETED` or `FAILED`. Registration is valid only while the handoff state is `UNINITIALIZED`. The hook runs while the handoff state is still `UNINITIALIZED` (after the stack is reserved, before the architecture operations); `PREREQUISITES_VALID` is set after the architecture operations, and the platform step follows it.
 
 ## Ownership / Lifetime
 
@@ -4066,11 +4086,11 @@ generic layer calls provider transition
 2. `current_stage` becomes `JP_BOOT_STAGE_HANDOFF_PREPARATION`.
 3. The prerequisites are checked: `environment.state`, `hardware.overall_state`, `memory_map.state`, and `kernel.image.state` are `DETECTED`; `kernel.validation_state` is `VALID`; `kernel.load_state` is `LOADED` and every kernel segment is `PERMISSIONED`; `framebuffer.state` is `DETECTED` or `NOT_DETECTED` (a machine without a framebuffer can still start, because Stage 3 has a text fallback; any other framebuffer state fails).
 4. The kernel stack is placed: a range of `JP_BOOT_KERNEL_STACK_SIZE` bytes, taken from usable memory with the placement rule of the loader (after the last kernel segment), so it overlaps no segment and not the kernel image. `handoff.stack_pointer` is set to the end (the highest address) of that range. The stack is identity-mapped: its virtual address equals its physical address. The range is then reserved with `jp_boot_environment_reserve_memory()`. If no range fits, or the reservation fails, the result is `JP_BOOT_FAILED`.
-5. The architecture operations are called in this order: `jp_<arch>_setup_paging()`, `jp_<arch>_prepare_entry()`, `jp_<arch>_validate_entry_state()`.
-6. `handoff.state` becomes `PREREQUISITES_VALID`.
-7. If a hook is registered, it is called exactly once with the context and its `user_data`. A result other than `JP_BOOT_SUCCESS` sets the interaction state to `FAILED`, fails the handoff, and is returned unchanged; `JP_BOOT_SUCCESS` sets the interaction state to `COMPLETED`. With no hook the interaction state stays `NOT_REGISTERED`.
+5. If a hook is registered, it is called exactly once with the context and its `user_data`. A result other than `JP_BOOT_SUCCESS` sets the interaction state to `FAILED`, fails the handoff (none of the architecture operations has been called), and is returned unchanged; `JP_BOOT_SUCCESS` sets the interaction state to `COMPLETED`. With no hook the interaction state stays `NOT_REGISTERED`. The hook runs first, before the architecture operations, because `jp_<arch>_prepare_entry()` masks the interrupts and the keyboard of some firmware (AArch64 UEFI) works only while they are not masked.
+6. The architecture operations are called in this order: `jp_<arch>_setup_paging()`, `jp_<arch>_prepare_entry()`, `jp_<arch>_validate_entry_state()`.
+7. `handoff.state` becomes `PREREQUISITES_VALID`.
 8. `jp_boot_environment_prepare_handoff()` is called (it also stores the final memory map in `context->memory_map`); then `handoff.state` becomes `PLATFORM_PREPARED`.
-9. The resulting handoff state is checked once more, after the platform step, because the hook and the platform step ran since the architecture check. The final memory map must pass `jp_boot_validate_memory_map()`, and all of these must hold: `handoff.architecture` still names the architecture that was used; `handoff.kernel_entry` equals `kernel.entry_point`; `handoff.page_table_root` is not zero and `handoff.paging_enabled` is true; `handoff.interrupts_disabled` is true; `handoff.stack_pointer` is not zero and is a multiple of the stack alignment of the architecture (`JP_X86_64_STACK_ALIGNMENT` or `JP_AARCH64_STACK_ALIGNMENT`, both 16). If one does not hold, the handoff fails with `JP_BOOT_FAILED`.
+9. The resulting handoff state is checked once more, after the platform step, because the platform step ran since the architecture check and may have changed the handoff fields. The final memory map must pass `jp_boot_validate_memory_map()`, and all of these must hold: `handoff.architecture` still names the architecture that was used; `handoff.kernel_entry` equals `kernel.entry_point`; `handoff.page_table_root` is not zero and `handoff.paging_enabled` is true; `handoff.interrupts_disabled` is true; `handoff.stack_pointer` is not zero and is a multiple of the stack alignment of the architecture (`JP_X86_64_STACK_ALIGNMENT` or `JP_AARCH64_STACK_ALIGNMENT`, both 16). If one does not hold, the handoff fails with `JP_BOOT_FAILED`.
 10. `handoff.ownership_transferred` becomes true, `handoff.state` becomes `READY`, and `current_stage` becomes `JP_BOOT_STAGE_READY`. Nothing is set to a ready value before this step.
 
 `jp_<arch>_prepare_entry()` therefore expects `handoff.stack_pointer` to be set already; it records the kernel entry address, the architecture, and the interrupt state, and returns a failing result if the stack pointer is not set.
@@ -4177,7 +4197,7 @@ Internal validation helpers and ordering remain implementation-defined unless re
 
 ## Verification
 
-Verify all success and failure combinations required by the handoff contract, including: no hook registered, hook registered and succeeding, hook failing, duplicate registration, registration after handoff started, hook invoked exactly once, and no memory-map key held across the hook.
+Verify all success and failure combinations required by the handoff contract, including: no hook registered, hook registered and succeeding, hook failing, duplicate registration, registration after handoff started, hook invoked exactly once, no memory-map key held across the hook, and the hook position (after the stack is reserved, before every architecture operation, `handoff.state` still `UNINITIALIZED`, `interrupts_disabled` not yet set).
 
 ---
 
@@ -4514,7 +4534,7 @@ AArch64 translates addresses with two trees: `TTBR1_EL1` for the upper half of t
 
 **The instructions that cannot be written in C** are in `aarch64_enter.S` and are declared in the private header `aarch64_cpu.h`: `jp_aarch64_disable_interrupts()`, `jp_aarch64_read_cpu_state(JPA64CpuState *)` (current exception level, `DAIF`, the system control register of the current level, and `MIDR_EL1`), `jp_aarch64_jump_to_kernel(ttbr1, ttbr0, stack, entry, context)`, and `jp_aarch64_park()` (`wfe` in a loop with interrupts masked). `jp_aarch64_enter_kernel()` is C, like on x86_64: it parks unless the handoff is `READY` and paging is enabled, takes `page_table_root`, `page_table_memory_base + 4096`, `stack_pointer`, `kernel_entry`, and the context pointer, and calls the jump.
 
-**The jump (`jp_aarch64_jump_to_kernel`).** (1) Mask all interrupts. (2) Write `MAIR_EL1` = `0x000000000000FF00` (attribute 0 is device memory `0x00`, attribute 1 is normal write-back memory `0xFF`). (3) Write `TCR_EL1`: 4 KiB granule for both halves (`TG0 = 0b00`, `TG1 = 0b10`), 48-bit addresses for both halves (`T0SZ = T1SZ = 16`), inner shareable, write-back write-allocate walks (`SH0 = SH1 = 0b11`, `IRGN0 = ORGN0 = IRGN1 = ORGN1 = 0b01`), both halves enabled, and `IPS` copied from the processor (`ID_AA64MMFR0_EL1.PARange`, at most 5 = 48 bits); the fixed part has the value `0xB5103510`. (4) Write `TTBR1_EL1` and `TTBR0_EL1`. (5) If the exception level is EL1: synchronize (`isb`, `dsb ish`, `tlbi vmalle1`, `dsb ish`, `isb`), set the bits `M` (MMU), `C` (data cache), and `I` (instruction cache) of `SCTLR_EL1` (the bit `WXN` is **not** set, because the identity map is writable and executable until Stage 2 replaces it), `isb`, set `SP` to the stack, put the context into `X0`, and branch to the entry. (6) If the exception level is EL2: set `HCR_EL2.RW` (bit 31, so that EL1 is 64-bit) and no other bit of `HCR_EL2`; write `SCTLR_EL1` = `0x30D00800` with `M`, `C`, `I` set (the fixed part is the reserved-to-one bits); synchronize with `dsb sy` and `isb`; write `SP_EL1`; write `SPSR_EL2` = `0x3C5` (EL1 with its own stack, all interrupts masked) and `ELR_EL2` with the address of the instruction that puts the context into `X0` and branches to the entry; then `eret`. Any other exception level is a state that `jp_aarch64_validate_entry_state()` has already refused.
+**The jump (`jp_aarch64_jump_to_kernel`).** (1) Mask all interrupts. (1a) If the exception level is EL1, switch the MMU off: clear the bit `M` of `SCTLR_EL1` and execute `isb`. (The firmware's own page tables are live at this moment. The writes of the next steps change how the processor reads them, and on a processor with the feature `LPA2` (52-bit addresses with a 4 KiB granule), whose firmware sets the bit `TCR_EL1.DS`, the old tables would be read in the other descriptor format, so the next instruction fetch fails with a permission fault. With the MMU off the processor reads no table, so the three registers can change safely. The code of this function runs from the identity-mapped boot application, so it keeps running at the same addresses, and it uses only registers until the MMU is on again. At EL2 this step is not needed: the firmware translates with the EL2 registers, and this function writes only EL1 registers.) (2) Write `MAIR_EL1` = `0x000000000000FF00` (attribute 0 is device memory `0x00`, attribute 1 is normal write-back memory `0xFF`). (3) Write `TCR_EL1`: 4 KiB granule for both halves (`TG0 = 0b00`, `TG1 = 0b10`), 48-bit addresses for both halves (`T0SZ = T1SZ = 16`), inner shareable, write-back write-allocate walks (`SH0 = SH1 = 0b11`, `IRGN0 = ORGN0 = IRGN1 = ORGN1 = 0b01`), both halves enabled, and `IPS` copied from the processor (`ID_AA64MMFR0_EL1.PARange`, at most 5 = 48 bits); the fixed part has the value `0xB5103510`. (4) Write `TTBR1_EL1` and `TTBR0_EL1`. (5) If the exception level is EL1: synchronize (`isb`, `dsb ish`, `tlbi vmalle1`, `dsb ish`, `isb`), set the bits `M` (MMU), `C` (data cache), and `I` (instruction cache) of `SCTLR_EL1` (the bit `WXN` is **not** set, because the identity map is writable and executable until Stage 2 replaces it), `isb`, set `SP` to the stack, put the context into `X0`, and branch to the entry. (6) If the exception level is EL2: set `HCR_EL2.RW` (bit 31, so that EL1 is 64-bit) and no other bit of `HCR_EL2`; write `SCTLR_EL1` = `0x30D00800` with `M`, `C`, `I` set (the fixed part is the reserved-to-one bits); synchronize with `dsb sy` and `isb`; write `SP_EL1`; write `SPSR_EL2` = `0x3C5` (EL1 with its own stack, all interrupts masked) and `ELR_EL2` with the address of the instruction that puts the context into `X0` and branches to the entry; then `eret`. Any other exception level is a state that `jp_aarch64_validate_entry_state()` has already refused.
 
 ## Purpose, Responsibilities, Public API, Internal API
 
@@ -16162,7 +16182,7 @@ It looks at three things: the result that Stage 2 recorded, the Stage 3 status a
 
 `CONTINUE_TO_KERNEL` exists only in Stage 4 and has no match in Stage 3. In Milestone 0 Stage 3's maximum retry count is zero, so `RETRY_BOOT` is never produced.
 
-The decision is computed by `jp_boot_manager_decide()`, and `jp_kernel_stage2_complete()` records it once in the `stage4` area (state `DECIDED`). It is never computed again.
+The decision is computed by `jp_boot_manager_decide()`, and `jp_kernel_stage2_complete()` records it once in the `stage4` area (state `DECIDED`). It is never computed again. The only change that can follow is the one that "4 Decided rules" calls "A failure while the kernel is being started".
 
 ## 4 Recovery Transition Owner Contract
 
@@ -16217,7 +16237,7 @@ kernel_main(context)
 
 The decision `CONTINUE_TO_KERNEL` was recorded before these steps. The summary is shown before the report is finalized, so that finalizing is the last thing that touches the diagnostic records.
 
-If finalizing the report or freezing fails, the failure is recorded as a Stage 3 error with the source `JP_BOOT_SOURCE_BOOT_MANAGER`, and the decision is worked out once more as a failure. The kernel is never started after a failed finalization or with a configuration that is not frozen.
+If finalizing the report fails, the failure is recorded as a Stage 3 error with the source `JP_BOOT_SOURCE_BOOT_MANAGER` and the stage `JP_DIAGNOSTIC_STAGE_STAGE4`, the Stage 3 status becomes `FAILED`, and the failure path of the Stage 3 recovery rules is followed (see "4 Decided rules", "A failure while the kernel is being started"). The kernel is never started after a failed finalization or with a configuration that is not frozen.
 
 The kernel receives the same `JPBootContext *`. It reads the frozen configuration with `jp_boot_config_get()` on `context->stage4.config`, and the configuration is read-only by contract. It reads the Boot Report with `jp_boot_report_get()`. After `kernel_main(context)` starts, the next running part of the system owns the context.
 
@@ -16361,6 +16381,56 @@ This table says what must be tested and on which combination of processor family
 | State of the machine at `kernel_main` | `IF = 0` | `IF = 0` | `PSTATE.DAIF = 1111` |
 
 AArch64 with BIOS is not supported. It is rejected before Stage 4 is reached.
+
+## 4 Decided rules (what the first implementation needs that the text above leaves open)
+
+This block was written when Stage 4 was audited against the finished Stage 1, Stage 2, and Stage 3. Each rule says what is decided and why. The rules on the program layout, the failure while the kernel is being started, the menu tests, and the three small rules at the end were taken together with the project owner.
+
+**Where the Stage 4 types are.** All Stage 4 types (`JPBootConfig` and its enumerations, `JPBootSelectionOutcome`, `JPBootManagerState`, `JPBootDecision`, `JPBootStage4Area`) are written in the private header `include/justos/boot/stage4_types.h`, which `boot_types.h` includes in its middle (the context must hold the area as a complete object, the same way that Stage 3 uses `diagnostic_types.h`). The four public Stage 4 headers include `boot_types.h` and so see all names. `JPBootSelectionPolicy`, `JP_BOOT_SELECTION_POLICY`, and `JPBootTransitionResult` are in `boot_manager.h`, `JPBootSummary` is in `boot_info.h`. The temporary byte block `JPBootStage4Area` of Stage 1 and its size constant are gone.
+
+**Two programs, one set of files (the phase macros).** Phase A runs in the boot program (the UEFI application and the BIOS loader), which contains Stage 1 but not Stage 3 and not the kernel. Phase B runs in the kernel image, which contains Stage 2 and Stage 3 but not Stage 1. The files of Stage 4 are the same for both programs, so each program is built with exactly one of two macros, and the code that belongs to the other phase is left out with `#if`: `JP_BOOT_STAGE4_PHASE_A` for the boot program, `JP_BOOT_STAGE4_PHASE_B` for the kernel image. A build with none of them, or with both, stops with `#error`. The public functions, their names, and their signatures stay exactly as written in the file specifications; only the compiled code differs:
+
+| File | Phase A (boot program) | Phase B (kernel image) |
+| ---- | ---------------------- | ---------------------- |
+| `boot_config.c` | all four functions | all four functions |
+| `boot_info.c` | both functions | both functions |
+| `boot_ui.c` | `jp_boot_ui_select` and its drawing helpers, the font | `jp_boot_ui_present_summary`, `jp_boot_ui_present_failure` |
+| `boot_manager.c` | `jp_boot_manager_prepare`, `jp_boot_manager_select` | `jp_boot_manager_decide`, `jp_boot_manager_request_recovery`, `jp_kernel_stage2_complete` |
+
+`boot_info.c` calls `jp_boot_status_get()`, which is a Stage 3 function, and the summary is also built in phase A. So the boot program also contains the Stage 3 file that defines `jp_boot_status_get()` and whatever that file calls. In phase A the Stage 3 area is all zeros, so the call returns `JP_BOOT_NOT_INITIALIZED` and `status_available` is false, exactly as the text above says. Nothing else of Stage 3 is linked into the boot program.
+
+**Who calls `jp_boot_manager_prepare`.** The caller that the Execution Context names is the entry code of the boot program: `uefi_entry.c` and `bios_entry.c` call `jp_boot_manager_prepare(context)` immediately before `jp_boot_run_pipeline(context)`. This works because `jp_boot_register_interaction()` only needs the handoff state to be `UNINITIALIZED`. If `prepare` fails, the entry code treats it like a failed pipeline (the same error path, the failing result unchanged). The files `boot_pipeline.c` and `handoff.c` of Stage 1 are not changed: Stage 1 does not depend on Stage 4, and its contract stays as it was (Rule 33).
+
+**The selection policy constant.** `JP_BOOT_SELECTION_POLICY` is a macro of `boot_manager.h` whose value is one of the `JPBootSelectionPolicy` names. A build sets it with the compiler option `-DJP_BOOT_SELECTION_POLICY=JP_BOOT_SELECTION_POLICY_INTERACTIVE` (or `..._DEFAULT_ONLY`). If the build does not set it, the header defines it as `JP_BOOT_SELECTION_POLICY_DEFAULT_ONLY`, so that a program never waits for a key unless somebody asked for the menu. The project build has an option with the same name whose default is `INTERACTIVE` (the development setting of the text above).
+
+**A failure while the kernel is being started.** "The Stage 3 records and the configuration agree" means three things, checked in this order: the Stage 3 status is `JP_BOOT_STATUS_RUNNING`; no error is recorded for this attempt (`jp_boot_error_get()` does not return `JP_BOOT_SUCCESS`); the configuration state is `VALIDATED` (so `jp_boot_config_freeze()` cannot fail afterwards). Any mismatch, and any failure of `jp_boot_report_finalize()`, is a failure while the kernel is being started. The failure path is these steps, in this order, and the kernel is not started:
+
+1. Create a Stage 3 error with `original_result` set to the failing result (`JP_BOOT_FAILED` for a mismatch, the result of `jp_boot_report_finalize()` for its failure), source `JP_BOOT_SOURCE_BOOT_MANAGER`, stage `JP_DIAGNOSTIC_STAGE_STAGE4`, no overrides, `diagnostic_context` 0. A refusal is ignored (an error may already exist, and Stage 3 keeps only the first).
+2. Ask for the status `JP_BOOT_STATUS_FAILED` with the tag `JP_DIAGNOSTIC_STAGE_STAGE4`. A refusal is ignored.
+3. Ask `jp_boot_recovery_decide()`. If it fails, the decision is `JP_RECOVERY_TERMINAL_HALT`. The stored `decision` of the `stage4` area is replaced by the matching `JPBootDecision`: this is the only time that the stored decision changes, and it is done because the stored `CONTINUE_TO_KERNEL` would no longer be true (Rule 30).
+4. Call `jp_boot_recovery_enter(context, decision)`. It does not return.
+
+**The recovery request, in detail.** `jp_boot_manager_request_recovery` with the decision `JP_RECOVERY_ENTER` does these steps, in this order: (1) if the Stage 3 status is not `RECOVERY`, ask for `RECOVERY` with the tag `JP_DIAGNOSTIC_STAGE_STAGE3` (Stage 3 normally has done this before it calls, so the status is usually `RECOVERY` already); a refusal returns `JP_BOOT_TRANSITION_REJECTED`; (2) call `jp_boot_ui_present_failure()` (a failure to show the text is recorded as an event and does not stop the request); (3) call `jp_boot_report_finalize()`; a failure returns `JP_BOOT_TRANSITION_REJECTED` and the manager state stays `DECIDED`; (4) call `jp_boot_config_freeze()` unless the configuration is `UNSET`; (5) set the manager state to `RECOVERY_REQUESTED`; (6) enter the recovery diagnostics state. The state `RECOVERY_REQUESTED` is set only when the request is really used up, so a rejected request can be sent again by Stage 3's terminal path without being refused for "already used".
+
+**The recovery diagnostics state, in detail.** It is the stopping routine of Stage 3, `jp_boot_recovery_enter(NULL, JP_RECOVERY_TERMINAL_HALT)`: with a `NULL` context it does not panic and does not change any record; it only turns the interrupts off and waits forever (see "3 Decided rules", "The stopping routine"). Everything that must be shown has been shown before this call. A test harness that replaces the destination replaces the Stage 3 halt hook (the private hook of Stage 3 that stops the processor), so the test sees `JP_BOOT_TRANSITION_ACCEPTED` as the text of the Recovery Transition Owner Contract says.
+
+**The events of phase B (step 4 of `jp_kernel_stage2_complete`).** After the event for the Stage 2 result, two events are added, both with severity `INFO`, source `JP_BOOT_SOURCE_BOOT_MANAGER`, stage `JP_DIAGNOSTIC_STAGE_STAGE4`, result `JP_BOOT_SUCCESS`. The first has `diagnostic_context` equal to the numeric value of the menu outcome (`JPBootSelectionOutcome`). The second has `diagnostic_context` equal to `(config_state << 8) | config_source`, where the two values are the numeric values of `JPBootConfigState` and `JPBootConfigSource`. A refusal of the log is ignored (the event is a report, not a decision).
+
+**What a usable framebuffer is for the menu.** The same rule as in Stage 3: the framebuffer state is `DETECTED`, the base address is not zero, the width, the height, and the pitch are not zero, the format is `RGB_888` or `BGR_888` (4 bytes per pixel), the pitch is at least `width * 4`, and the pitch is a multiple of 4. A framebuffer that does not follow this rule is "no usable framebuffer": the menu is skipped with `SKIPPED_NO_FRAMEBUFFER`, and `jp_boot_ui_select` returns `JP_BOOT_NOT_DETECTED`.
+
+**The font of the menu.** `boot_ui.c` needs the pictures of the characters. They are generated by `scripts/gen_font.py` into `src/boot/boot_ui_font.c` with the header `boot_ui_font.h` (private files of Stage 4, like `diagnostic_font` of Stage 3; no other file includes them). The glyphs are the same as in the other two copies; the script checks all three files with `--check`.
+
+**Small rules of the menu that the key table leaves open.** (1) A character event that is not printable ASCII (a code below 0x20 or above 0x7E) is ignored while editing, because a configuration cannot hold it. (2) A key event whose key is not in the table is ignored, and so is an event of the kind `NONE`. (3) `jp_boot_ui_select` returns a failure of `jp_boot_config_apply()` other than `JP_BOOT_ERROR_INVALID_PARAM` (for example `JP_BOOT_FAILED` for a configuration that is already frozen) unchanged, and the menu is left; only a rejected candidate keeps the menu open. (4) The menu draws again after every key (and once at the start), not on every poll for a key; what can be seen is the same. (5) The text of the menu is drawn on a grid of cells of 8 by 16 pixels, white on black, at most 80 columns; the current field is drawn inverse (black on white); text that does not fit inside the framebuffer is cut off. (6) When `jp_boot_ui_select` ends after the menu has been drawn (applied, discarded, or left because of a failure), it first fills the whole framebuffer with black, and only then returns. The menu is the last user of the screen before the kernel or a Stage 3 screen, and Stage 3 clears only the lines it writes, so without this the old menu (and the text of the firmware under it) would show through the diagnostic screen. Only the pixels of the visible width of every line are written, never the padding bytes at the end of a line (`pitch` minus `width * 4`). When the menu is not run (policy `DEFAULT_ONLY`, no usable framebuffer, no keyboard), the screen is not touched.
+
+**The text screens of phase B.** `jp_boot_ui_present_summary` writes one line for each field of `JPBootSummary` (eleven lines, in the order of the structure: `Architecture: `, `Environment: `, `Environment state: `, `Hardware: `, `Memory map: `, `Framebuffer: `, `Kernel validation: `, `Kernel load: `, `Boot status: `, `Configuration: <state> (<source>)`, `Menu: `), and then, when `verbose_output` is true, one line for each recorded event. A boot status that Stage 3 did not report is written as `NOT INITIALIZED`. `jp_boot_ui_present_failure` writes `JustOS boot diagnostics`, `Status: <name>` (or `NOT INITIALIZED`), either `Error: <result> in <stage>` and `Severity: <severity>, <recoverability>, source <source>` or `Error: none recorded`, `Events: <count>` (or `NOT INITIALIZED`), and, when `verbose_output` is true, one line for each recorded event. An event line is `Event <index>: <stage> <severity> <result> <source>`. The names are the ones of the enumerations without a prefix, except the result, which keeps the C name (`JP_BOOT_FAILED`).
+
+**What `jp_boot_manager_decide` does when Stage 3 cannot decide.** Rule 1 asks `jp_boot_recovery_decide()`. If that function fails (for example because Stage 3 never started), `jp_boot_manager_decide` returns its result unchanged and writes nothing into `*decision`. `jp_kernel_stage2_complete` then uses `TERMINAL_HALT`, because a decision that nobody can make is the safest one to stop on. (After step 3 of `jp_kernel_stage2_complete`, Stage 3 has started, so this case is only possible when the Stage 3 records are damaged.)
+
+**Whether a show-failure stops anything.** If the summary or the failure screen cannot be shown, one `WARNING` event is added (stage `JP_DIAGNOSTIC_STAGE_STAGE4`, source `JP_BOOT_SOURCE_BOOT_MANAGER`, the failing result, context 0) before the report is finalized, and the flow goes on.
+
+**The test programs.** The test kernel reads what Stage 3 and Stage 4 left through the public read functions and writes the lines `JP|stage3.<key>` and `JP|stage4.<key>` (`stage_lines.c`); there are no stand-ins for Stage 4 any more. The variants of the test kernel are the normal one, `recovery` (the ELF check fails with `JP_BOOT_FAILED`), and `panic` (it fails with `JP_BOOT_ERROR_INVALID_PARAM`). The boot program exists with both policies: `boot.efi` and `loader.bin` are `DEFAULT_ONLY`, `boot_interactive.efi` and `loader_interactive.bin` are `INTERACTIVE`.
+
+**How the QEMU tests use the menu.** The automatic QEMU tests build the boot program with `DEFAULT_ONLY`, because with a window (and a framebuffer) the menu would wait for a key forever. The menu itself is run on the QEMU level by a separate test, which builds the boot program with `INTERACTIVE`, sends keys through the QEMU control socket (`send-key`), takes a screen dump of the menu, and checks that the chosen values arrive in the frozen configuration that the test kernel reads. The same two scenarios (`menu_apply` and `menu_recovery`) run on x86_64 UEFI, x86_64 BIOS, and AArch64 UEFI. The text typed in `menu_apply` contains a space and the characters `=` and `-`, so that the punctuation keys of the BIOS keyboard map are checked as well. A run that ends in the recovery diagnostics state (Stage 2 failed, or recovery was asked for) never returns, so such a test is observed from outside like the `panic` test of Stage 3.
 
 ## 4 File Specifications
 
@@ -16930,7 +17000,7 @@ The Boot Manager owns the manager state, the menu outcome, and the decision. The
 ## Invariants
 
 - The menu function runs at most once.
-- The decision is recorded once.
+- The decision is recorded once. (The one exception is a failure while the kernel is being started, see "4 Decided rules": then the recorded decision is replaced once, because the kernel was not started.)
 - A recovery request is used up at most once.
 - The kernel is never started unless the report is finalized and the configuration is `FROZEN`.
 
@@ -17022,7 +17092,7 @@ The functions borrow the context. They write only the `stage4` area, and the Sta
 
 ## Invariants
 
-The kernel is never started after a failed finalization or with an unfrozen configuration. The decision is never computed again. Interrupts are never turned on.
+The kernel is never started after a failed finalization or with an unfrozen configuration. The decision is never computed again (see the one exception in "4 Decided rules"). Interrupts are never turned on.
 
 ## Dependencies
 
@@ -17133,6 +17203,8 @@ SPECIFICATION LOCK = APPROVED
 
 This decision locks the Stage 4 specification only. It does not say that the code is finished and tested, and it does not replace the lock decisions of Stages 1 to 3.
 
+On 2026-11-21 the project owner confirmed that the block "4 Decided rules", written while the code was implemented (after this decision), is part of the Stage 4 lock. The same day two Stage 1 rules were changed by the owner's decision during the Stage 4 review (the position of the interaction hook and the BIOS keyboard map); both changes are made in the Stage 1 text.
+
 ## 4 Implementation Acceptance
 
 Implementation Acceptance is separate from the Specification Lock. It answers a different question: does the finished code behave as this document says? It requires:
@@ -17149,6 +17221,16 @@ Implementation Acceptance is separate from the Specification Lock. It answers a 
 - no resource of Stage 1, Stage 2, or Stage 3 was damaged;
 - no Stage 4 function is missing at link time;
 - nothing that was left for later was used.
+
+**Record of the acceptance (Stage 4).** All twelve items above are met; recorded on 2026-11-21, before the commit of Stage 4 and at the request of the project owner, with this evidence:
+
+- unit tests (gcc and clang, 43 tests in all; the Stage 4 tests are `tests/unit/stage4/test_boot_{config,info,ui,ui_text,manager,manager_select_interactive,manager_select_default_only}.c`) with mutation checks (the survivors found during the work were killed by new tests; the remaining ones are equivalent changes), and AddressSanitizer and UBSan runs of the Stage 4 tests, without findings;
+- QEMU tests on x86_64 UEFI, x86_64 BIOS (both also under KVM), and AArch64 UEFI (19 tests with the label `qemu`, 2 with the label `kvm`), all passing. Per platform: the normal run (policy `DEFAULT_ONLY`, the menu is skipped, the kernel receives the frozen default configuration, the summary passes through the real serial output); `recovery` and `panic` (the screen dump is compared pixel by pixel with the expected text); `menu_apply` and `menu_recovery` (policy `INTERACTIVE`, keys sent through the QEMU control socket: text with a space, `=` and `-`, three switches, F10; the kernel reports exactly the chosen frozen configuration; "Recovery requested" enters the recovery diagnostics state);
+- a rejected candidate, retry, and the manager states that cannot occur in a normal run (`records_agree`, the failure of `freeze`) are covered by unit tests only;
+- the review and the manual check under KVM (virt-manager; x86_64 UEFI, x86_64 BIOS, AArch64 UEFI) found three defects in Stage 1 and one in Stage 4, all fixed documentation first: the interaction hook ran after `prepare_entry`, which masks the interrupts, so the AArch64 firmware keyboard never produced a key (the hook now runs before the architecture operations, see "Pre-Transition Interaction Point"); the BIOS keyboard map lacked the space and the unshifted punctuation (the scan code table in "Input" of `bios.c`); `jp_aarch64_jump_to_kernel` wrote `TCR_EL1` while the firmware's MMU was on, which hung on a processor with `LPA2` such as the libvirt default `-cpu max` (step 1a of "The jump": at EL1 the MMU is switched off first; the QEMU tests `qemu_aarch64-uefi_cpu_max` and `qemu_aarch64-uefi_el2` were added); and the menu left its text on the screen under the Stage 3 screens (small rule 6 of the menu).
+- a search of the Stage 4 sources for `malloc`, `memcpy`, `memset`, `TODO`, mutable global data, and writes to the fields of Stage 1, Stage 2, and Stage 3 (none; the only matches are comments that say the code does not use them).
+
+**Not part of this acceptance:** level M (nothing of Stage 4 ran on real hardware; the project owner runs the whole milestone by hand after the last stage); the older text of Stages 1 to 3, which has not been rewritten for the junior-readability test; and the stand-ins that remain in `tests/` (`fake_elf_failure.c` and the fakes inside the unit tests), listed in `stage4_report.md`.
 
 ## 4 Final Lock Statement
 

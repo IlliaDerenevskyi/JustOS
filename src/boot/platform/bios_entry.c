@@ -18,8 +18,8 @@
  *   - provide jp_bios_port_read8() (the processor instruction "inb").
  *
  * Limitations:
- *   The only output of this path is the serial port. The Stage 4 registration
- *   step is absent until Stage 4 exists. Built only into the BIOS loader.
+ *   The only output of this path is the serial port. The Stage 4 phase A step
+ *   (jp_boot_manager_prepare) runs before the pipeline. Built only into the BIOS loader.
  *
  * Depends on:
  *   justos/boot/boot_pipeline.h, justos/boot/platform/bios.h and bios_block.h,
@@ -30,6 +30,7 @@
  */
 
 #include "justos/boot/architecture/x86_64.h"
+#include "justos/boot/boot_manager.h"
 #include "justos/boot/boot_pipeline.h"
 #include "justos/boot/platform/bios.h"
 #include "justos/boot/platform/bios_block.h"
@@ -181,7 +182,11 @@ void jp_bios_main(const JPBiosBlock *block)
 	context->environment.platform_context = provider;
 	context->handoff.architecture = JP_ARCH_X86_64;
 
-	result = jp_boot_run_pipeline(context);
+	/* Stage 4, phase A: the default configuration and the menu hook ("4 Decided rules"); a failure is a failed pipeline. */
+	result = jp_boot_manager_prepare(context);
+	if (result == JP_BOOT_SUCCESS) {
+		result = jp_boot_run_pipeline(context);
+	}
 	if (result != JP_BOOT_SUCCESS) {
 		serial_puts("JustOS boot failed: ");
 		serial_puts(result_name(result));

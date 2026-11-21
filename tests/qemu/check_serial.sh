@@ -14,7 +14,9 @@
 #     "@result <text>", exactly <text> (a run that must fail on purpose);
 #   - every non-empty line of tests/qemu/expected/<platform>.txt that does not
 #     start with '#' is an extended regular expression that must match at least
-#     one "JP|" line; a line that starts with '!' must match none.
+#     one "JP|" line; a line that starts with '!' must match none;
+#   - a pattern that starts with "text:" is matched against every line of the raw log (the plain text lines
+#     of the Stage 3 and Stage 4 screens go to the serial port too); "!text:" must match none.
 #
 # Exit status: 0 all checks passed; 1 a check failed (the reason is printed);
 # 2 wrong usage or a missing file.
@@ -46,9 +48,11 @@ if [ ! -f "$log" ]; then
 fi
 
 lines="$(mktemp)"
-trap 'rm -f "$lines"' EXIT
+raw="$(mktemp)"
+trap 'rm -f "$lines" "$raw"' EXIT
 # The serial console may add carriage returns.
-tr -d '\r' < "$log" | grep -a '^JP|' > "$lines" || true
+tr -d '\r' < "$log" > "$raw"
+grep -a '^JP|' "$raw" > "$lines" || true
 
 failures=0
 
@@ -71,6 +75,21 @@ fi
 while IFS= read -r pattern || [ -n "$pattern" ]; do
 	case "$pattern" in
 	'' | '#'* | '@'*) continue ;;
+	'text:'*)
+		# A line of the plain text that the boot code wrote (not a "JP|" line): the whole raw log is searched.
+		wanted="${pattern#text:}"
+		if ! grep -aEq -- "$wanted" "$raw"; then
+			echo "FAIL: no text line matches: ${wanted}"
+			failures=$((failures + 1))
+		fi
+		;;
+	'!text:'*)
+		forbidden="${pattern#!text:}"
+		if grep -aEq -- "$forbidden" "$raw"; then
+			echo "FAIL: forbidden text line present: ${forbidden}"
+			failures=$((failures + 1))
+		fi
+		;;
 	'!'*)
 		forbidden="${pattern#!}"
 		if grep -aEq -- "$forbidden" "$lines"; then

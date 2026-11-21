@@ -17,7 +17,7 @@
  *
  * Limitations:
  *   Built only into the UEFI boot application, for x86_64 and AArch64. The
- *   Stage 4 registration step is absent until Stage 4 exists.
+ *   Stage 4 phase A step (jp_boot_manager_prepare) runs before the pipeline.
  *
  * Depends on:
  *   justos/boot/boot_pipeline.h, justos/boot/platform/uefi.h, the architecture
@@ -27,6 +27,7 @@
  *   Anything that is not part of Stage 1.
  */
 
+#include "justos/boot/boot_manager.h"
 #include "justos/boot/boot_pipeline.h"
 #include "justos/boot/platform/uefi.h"
 
@@ -159,7 +160,11 @@ JPUefiStatus JP_UEFI_API efi_main(JPUefiHandle image_handle, JPUefiSystemTable *
 	context->environment.platform_context = provider;
 	context->handoff.architecture = JP_ENTRY_ARCHITECTURE;
 
-	result = jp_boot_run_pipeline(context);
+	/* Stage 4, phase A: the default configuration and the menu hook ("4 Decided rules"); a failure is a failed pipeline. */
+	result = jp_boot_manager_prepare(context);
+	if (result == JP_BOOT_SUCCESS) {
+		result = jp_boot_run_pipeline(context);
+	}
 	if (result != JP_BOOT_SUCCESS) {
 		if (jp_uefi_boot_services_active(provider)) {
 			print_failure(system_table, result, context->current_stage);

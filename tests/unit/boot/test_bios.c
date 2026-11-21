@@ -527,18 +527,28 @@ static void test_input(void)
 		{ 0x11, JP_BOOT_INPUT_CHARACTER, JP_BOOT_KEY_UP, 'w' },
 		{ 0x1F, JP_BOOT_INPUT_CHARACTER, JP_BOOT_KEY_UP, 's' },
 		{ 0x2D, JP_BOOT_INPUT_CHARACTER, JP_BOOT_KEY_UP, 'x' },
+		/* punctuation and space (without Shift) */
+		{ 0x0C, JP_BOOT_INPUT_CHARACTER, JP_BOOT_KEY_UP, '-' },
+		{ 0x0D, JP_BOOT_INPUT_CHARACTER, JP_BOOT_KEY_UP, '=' },
+		{ 0x1A, JP_BOOT_INPUT_CHARACTER, JP_BOOT_KEY_UP, '[' },
+		{ 0x1B, JP_BOOT_INPUT_CHARACTER, JP_BOOT_KEY_UP, ']' },
+		{ 0x27, JP_BOOT_INPUT_CHARACTER, JP_BOOT_KEY_UP, ';' },
+		{ 0x28, JP_BOOT_INPUT_CHARACTER, JP_BOOT_KEY_UP, '\'' },
+		{ 0x29, JP_BOOT_INPUT_CHARACTER, JP_BOOT_KEY_UP, '`' },
+		{ 0x2B, JP_BOOT_INPUT_CHARACTER, JP_BOOT_KEY_UP, '\\' },
+		{ 0x33, JP_BOOT_INPUT_CHARACTER, JP_BOOT_KEY_UP, ',' },
+		{ 0x34, JP_BOOT_INPUT_CHARACTER, JP_BOOT_KEY_UP, '.' },
+		{ 0x35, JP_BOOT_INPUT_CHARACTER, JP_BOOT_KEY_UP, '/' },
+		{ 0x39, JP_BOOT_INPUT_CHARACTER, JP_BOOT_KEY_UP, ' ' },
 		/* keys that cannot be mapped */
 		{ 0x1D, JP_BOOT_INPUT_NONE, JP_BOOT_KEY_UP, 0 },      /* Ctrl */
 		{ 0x3B, JP_BOOT_INPUT_NONE, JP_BOOT_KEY_UP, 0 },      /* F1 */
-		{ 0x39, JP_BOOT_INPUT_NONE, JP_BOOT_KEY_UP, 0 },      /* Space */
-		{ 0x0C, JP_BOOT_INPUT_NONE, JP_BOOT_KEY_UP, 0 },      /* minus: not in the letter and digit rows */
-		{ 0x1B, JP_BOOT_INPUT_NONE, JP_BOOT_KEY_UP, 0 },      /* the key after the first row end: not mapped */
-		{ 0x27, JP_BOOT_INPUT_NONE, JP_BOOT_KEY_UP, 0 },      /* just after 'l' */
-		{ 0x2B, JP_BOOT_INPUT_NONE, JP_BOOT_KEY_UP, 0 },      /* just before 'z' */
-		{ 0x33, JP_BOOT_INPUT_NONE, JP_BOOT_KEY_UP, 0 },      /* just after 'm' */
-		{ 0x1A, JP_BOOT_INPUT_NONE, JP_BOOT_KEY_UP, 0 },      /* just after 'p' */
 		{ 0x0F, JP_BOOT_INPUT_NONE, JP_BOOT_KEY_UP, 0 },      /* Tab, just before 'q' */
-		{ 0x1D, JP_BOOT_INPUT_NONE, JP_BOOT_KEY_UP, 0 },
+		{ 0x2A, JP_BOOT_INPUT_NONE, JP_BOOT_KEY_UP, 0 },      /* left Shift, just before z and after the backslash */
+		{ 0x36, JP_BOOT_INPUT_NONE, JP_BOOT_KEY_UP, 0 },      /* right Shift, just after '/' */
+		{ 0x38, JP_BOOT_INPUT_NONE, JP_BOOT_KEY_UP, 0 },      /* Alt, just before space */
+		{ 0x3A, JP_BOOT_INPUT_NONE, JP_BOOT_KEY_UP, 0 },      /* Caps Lock, just after space */
+		{ 0x37, JP_BOOT_INPUT_NONE, JP_BOOT_KEY_UP, 0 },      /* keypad multiply */
 		{ 0xE0, JP_BOOT_INPUT_NONE, JP_BOOT_KEY_UP, 0 },      /* the prefix byte of an extended key */
 		{ 0x00, JP_BOOT_INPUT_NONE, JP_BOOT_KEY_UP, 0 },
 		/* break codes (key released): bit 7 set, never mapped */

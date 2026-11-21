@@ -95,12 +95,18 @@ struct JPBiosContext {
 	JPMemoryMap final_map;                  /* kept for the kernel: the block may be overwritten later */
 };
 
-/* The letter and digit rows (scan code set 1). */
+/* The character keys without Shift (scan code set 1, US keyboard). */
 static const JPBiosKeyRow jp_bios_key_rows[] = {
 	{ 0x02, "1234567890" },
+	{ 0x0C, "-=" },
 	{ 0x10, "qwertyuiop" },
+	{ 0x1A, "[]" },
 	{ 0x1E, "asdfghjkl" },
-	{ 0x2C, "zxcvbnm" }
+	{ 0x27, ";'`" },
+	{ 0x2B, "\\" },
+	{ 0x2C, "zxcvbnm" },
+	{ 0x33, ",./" },
+	{ 0x39, " " }
 };
 
 /* ---- Public API ---- */
@@ -302,7 +308,7 @@ static void copy_memory_map(JPMemoryMap *to, const JPMemoryMap *from)
 
 /* ---- Private helpers: input ---- */
 
-/* The character of a letter or digit key, or 0 if the scan code is in no row. */
+/* The character of a character key, or 0 if the scan code is in no row. */
 static uint32_t scan_to_character(uint8_t scan)
 {
 	size_t row;

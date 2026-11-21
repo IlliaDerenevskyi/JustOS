@@ -9,6 +9,8 @@ KVM runs only guests of the host architecture. On an x86_64 host this covers
 x86_64 with UEFI and x86_64 with BIOS. AArch64 with UEFI can only run in QEMU
 software emulation (`scripts/run_qemu.sh aarch64-uefi`).
 
+See also `docs/milestones/milestone0/manual_check.md` (the list of scenarios and `scripts/make_manual_images.sh`, which builds the images).
+
 ## What you need
 
 - Packages from `requirements.txt` (optional section): `libvirt`, `virt-manager`.

@@ -25,13 +25,30 @@
 ^JP\|handoff\.paging_enabled=yes$
 ^JP\|handoff\.interrupts_disabled=yes$
 ^JP\|handoff\.ownership_transferred=yes$
-# Stage 3 ran (the stand-in of Stage 4 drives the real Stage 3 code; these lines went through the real diagnostic output).
-^JP\|stage3\.output=OK$
+# The real Stage 3 and Stage 4 ran after Stage 2: the menu was skipped by the policy (the automatic tests build the
+# boot program with DEFAULT_ONLY), the default configuration was frozen, and the report is final.
 ^JP\|stage3\.status=RUNNING$
 ^JP\|stage3\.attempt=1$
-^JP\|stage3\.events=2$
+^JP\|stage3\.events=4$
 ^JP\|stage3\.error=NONE$
 ^JP\|stage3\.report=FINAL$
+^JP\|stage4\.manager=DECIDED$
+^JP\|stage4\.decision=CONTINUE_TO_KERNEL$
+^JP\|stage4\.selection=SKIPPED_POLICY$
+^JP\|stage4\.config\.state=FROZEN$
+^JP\|stage4\.config\.source=DEFAULT$
+^JP\|stage4\.config\.kernel_parameters=$
+^JP\|stage4\.config\.boot_logging=yes$
+^JP\|stage4\.config\.verbose_output=no$
+^JP\|stage4\.config\.safe_mode=no$
+^JP\|stage4\.config\.recovery_requested=no$
+^JP\|stage4\.config\.entry_count=0$
+# The summary that Stage 4 showed (boot_logging is on) went through the real Stage 3 text output.
+text:^Architecture: x86_64$
+text:^Environment: BIOS$
+text:^Boot status: RUNNING$
+text:^Configuration: VALIDATED \(DEFAULT\)$
+text:^Menu: SKIPPED_POLICY$
 # No item may be reported as failed or unknown.
 !^JP\|[a-z_.0-9]*=(FAILED|UNKNOWN|NOT_INITIALIZED)$
 !^JP\|RESULT=FAIL

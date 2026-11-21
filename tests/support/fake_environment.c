@@ -58,6 +58,9 @@ JPBootResult jp_boot_environment_prepare_handoff(JPBootContext *context)
 
 	fake->prepare_handoff_calls++;
 	fake->reserve_calls_before_prepare = fake->reserve_calls;
+	if (fake->on_prepare_handoff != NULL) {
+		fake->on_prepare_handoff(context);
+	}
 	if (fake->prepare_handoff_result != JP_BOOT_SUCCESS) {
 		return fake->prepare_handoff_result;
 	}

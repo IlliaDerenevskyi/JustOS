@@ -7,7 +7,7 @@ Usage: scripts/gen_font.py [--font PATH] [--size PIXELS] [--check]
   --check  do not write; fail if one of the generated files differs from
            what this script would produce (used to detect hand edits)
 
-Writes tests/qemu/test_kernel/font8x16.c and src/boot/diagnostic_font.c (the same glyphs): one 16-byte bitmap for every printable
+Writes tests/qemu/test_kernel/font8x16.c, src/boot/diagnostic_font.c, and src/boot/boot_ui_font.c (the same glyphs): one 16-byte bitmap for every printable
 ASCII character 0x20..0x7E. Each byte is one pixel row, the most significant bit
 is the leftmost pixel; a set bit is a lit pixel. The output is deterministic for
 a given font file and size.
@@ -35,9 +35,10 @@ DEFAULT_SIZE = 13
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 OUTPUT = ROOT / "tests" / "qemu" / "test_kernel" / "font8x16.c"
 DIAGNOSTIC_OUTPUT = ROOT / "src" / "boot" / "diagnostic_font.c"
+BOOT_UI_OUTPUT = ROOT / "src" / "boot" / "boot_ui_font.c"
 
-# The two generated files: the font of the test kernel and the font of Stage 3
-# (the same glyphs, different names).
+# The three generated files: the font of the test kernel, the font of Stage 3, and the font of the Stage 4
+# menu (the same glyphs, different names).
 TARGETS = [
     dict(path=OUTPUT, title="font8x16.c - 8x16 bitmap font of the test kernel (printable ASCII).",
          include="font.h", symbol="jp_test_font8x16",
@@ -45,6 +46,9 @@ TARGETS = [
     dict(path=DIAGNOSTIC_OUTPUT, title="diagnostic_font.c - 8x16 bitmap font of the Stage 3 diagnostic output (printable ASCII).",
          include="diagnostic_font.h", symbol="jp_diagnostic_font8x16",
          count="JP_DIAGNOSTIC_FONT_GLYPH_COUNT", height="JP_DIAGNOSTIC_FONT_HEIGHT"),
+    dict(path=BOOT_UI_OUTPUT, title="boot_ui_font.c - 8x16 bitmap font of the Stage 4 boot menu (printable ASCII).",
+         include="boot_ui_font.h", symbol="jp_boot_ui_font8x16",
+         count="JP_BOOT_UI_FONT_GLYPH_COUNT", height="JP_BOOT_UI_FONT_HEIGHT"),
 ]
 
 

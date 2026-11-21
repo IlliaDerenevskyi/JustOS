@@ -1,0 +1,2 @@
+# Only for tests/qemu/test_check_serial.sh: a run that must end with this RESULT line (the "@result" directive).
+@result JP|RESULT=FAIL|stage2_result

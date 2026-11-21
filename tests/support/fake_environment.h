@@ -30,6 +30,8 @@ typedef struct JPFakeEnvironment {
 	/* When use_final_memory_map is true, prepare_handoff publishes this map. */
 	JPMemoryMap final_memory_map;
 	bool use_final_memory_map;
+	/* Called inside prepare_handoff, so that a test can damage the handoff fields in the platform step. */
+	void (*on_prepare_handoff)(JPBootContext *context);
 
 	unsigned int memory_map_calls;
 	unsigned int framebuffer_calls;
