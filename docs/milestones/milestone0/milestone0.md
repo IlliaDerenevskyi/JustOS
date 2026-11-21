@@ -13387,78 +13387,78 @@ The following criteria are mandatory.
 
 ### Architecture Contract
 
-- [ ] Target architecture is explicitly defined.
-- [ ] Unsupported architectures are explicitly excluded.
-- [ ] Architecture-specific responsibilities are isolated.
-- [ ] No architecture-significant behavior remains implicit.
+- [x] Target architecture is explicitly defined.
+- [x] Unsupported architectures are explicitly excluded.
+- [x] Architecture-specific responsibilities are isolated.
+- [x] No architecture-significant behavior remains implicit.
 
 ### Stage 1 Input Contract
 
-- [ ] Stage 1 → Stage 2 boundary is defined.
-- [ ] Required Stage 1 state is identified.
-- [ ] Ownership of Stage 1-provided resources is defined.
-- [ ] Lifetime of Stage 1-provided resources is defined.
-- [ ] Stage 2 does not require undocumented Stage 1 behavior.
+- [x] Stage 1 → Stage 2 boundary is defined.
+- [x] Required Stage 1 state is identified.
+- [x] Ownership of Stage 1-provided resources is defined.
+- [x] Lifetime of Stage 1-provided resources is defined.
+- [x] Stage 2 does not require undocumented Stage 1 behavior.
 
 ### Subsystem Contract
 
 For every Stage 2 subsystem:
 
-- [ ] purpose is defined;
-- [ ] responsibilities are defined;
-- [ ] non-responsibilities are defined;
-- [ ] public API is defined;
-- [ ] state is defined;
-- [ ] ownership is defined;
-- [ ] lifetime is defined;
-- [ ] dependencies are defined;
-- [ ] failure semantics are defined;
-- [ ] invariants are defined.
+- [x] purpose is defined;
+- [x] responsibilities are defined;
+- [x] non-responsibilities are defined;
+- [x] public API is defined;
+- [x] state is defined;
+- [x] ownership is defined;
+- [x] lifetime is defined;
+- [x] dependencies are defined;
+- [x] failure semantics are defined;
+- [x] invariants are defined.
 
 ### Initialization Contract
 
-- [ ] Complete execution order is defined.
-- [ ] Dependency order is defined.
-- [ ] Initialization success condition is defined.
-- [ ] Initialization failure condition is defined.
-- [ ] Failure propagation is defined.
-- [ ] Partial initialization semantics are defined.
-- [ ] Completion state is defined.
+- [x] Complete execution order is defined.
+- [x] Dependency order is defined.
+- [x] Initialization success condition is defined.
+- [x] Initialization failure condition is defined.
+- [x] Failure propagation is defined.
+- [x] Partial initialization semantics are defined.
+- [x] Completion state is defined.
 
 ### Memory / Runtime Contract
 
-- [ ] Memory adoption is defined.
-- [ ] Paging foundation is defined.
-- [ ] Stack state is defined.
-- [ ] Heap state is defined.
-- [ ] Resource ownership is defined.
-- [ ] Required runtime invariants are defined.
+- [x] Memory adoption is defined.
+- [x] Paging foundation is defined.
+- [x] Stack state is defined.
+- [x] Heap state is defined.
+- [x] Resource ownership is defined.
+- [x] Required runtime invariants are defined.
 
 ### ELF Contract
 
-- [ ] Stage 1 ELF loading boundary is defined.
-- [ ] Stage 2 ELF validation responsibility is defined.
-- [ ] ELF ownership is defined.
-- [ ] ELF failure behavior is defined.
-- [ ] Stage 2 does not duplicate Stage 1 ELF loading.
+- [x] Stage 1 ELF loading boundary is defined.
+- [x] Stage 2 ELF validation responsibility is defined.
+- [x] ELF ownership is defined.
+- [x] ELF failure behavior is defined.
+- [x] Stage 2 does not duplicate Stage 1 ELF loading.
 
 ### Boundary Contract
 
-- [ ] Stage 1 → Stage 2 boundary is defined.
-- [ ] Stage 2 → Stage 3 boundary is defined.
-- [ ] Stage 2 completion continuation and `kernel_main()` relationship are defined.
-- [ ] No Stage 3 dependency is required for Stage 2 completion.
+- [x] Stage 1 → Stage 2 boundary is defined.
+- [x] Stage 2 → Stage 3 boundary is defined.
+- [x] Stage 2 completion continuation and `kernel_main()` relationship are defined.
+- [x] No Stage 3 dependency is required for Stage 2 completion.
 
 ### File Contract
 
-- [ ] Every Stage 2 production file is identified.
-- [ ] Both architecture-specific entry stubs are identified and specified.
-- [ ] Every file has a normative File Specification.
-- [ ] Every Stage 2 component has Common, x86_64, AArch64, and Architecture Boundary contract sections.
-- [ ] The Stage 2 Architecture Contract Matrix passes for every component.
-- [ ] No required implementation file is missing from the specification.
-- [ ] No undocumented production file is required.
-- [ ] Header/API relationships are defined.
+- [x] Every Stage 2 production file is identified.
+- [x] Both architecture-specific entry stubs are identified and specified.
+- [x] Every file has a normative File Specification.
+- [x] Every Stage 2 component has Common, x86_64, AArch64, and Architecture Boundary contract sections.
+- [x] The Stage 2 Architecture Contract Matrix passes for every component.
+- [x] No required implementation file is missing from the specification.
+- [x] No undocumented production file is required.
+- [x] Header/API relationships are defined.
 
 ---
 
@@ -17120,23 +17120,23 @@ For every file above, the rules are the same on both processor families. Every p
 
 This list is the checklist for the Stage 4 lock. Each line must be fully described in this document.
 
-- [ ] What Stage 4 does and does not do is stated: boot configuration, boot screens, collecting information, the decision, the recovery request, freezing, and starting the kernel.
-- [ ] The behavior on x86_64 and on AArch64 is stated.
-- [ ] The three ways Stage 4 is entered are stated.
-- [ ] The Stage 4 area, who owns it, and how long it lives are stated.
-- [ ] `JPBootConfig`, its default values, its rules of validity, its states, and what happens when it is missing or invalid are stated.
-- [ ] The lists of named values for the menu outcome, the manager state, and the decision are stated.
-- [ ] The selection policy, and the fact that it is chosen when the program is built, are stated.
-- [ ] The phase A menu (framebuffer, keyboard, keys, accepting and discarding) and the phase B text screens are stated.
-- [ ] The information gathering keeps "not available" states as they are, and defines no `JPBootInfo`.
-- [ ] The decision rules and their one-to-one link to the Stage 3 recovery decisions are stated.
-- [ ] The part that accepts recovery requests, its results, and the rule that a request is used up once are stated.
-- [ ] The order of freezing and the handoff to the kernel are stated.
-- [ ] What `jp_kernel_stage2_complete()` does after success and after failure is stated.
-- [ ] The boundary between Stage 4 and the kernel, and the processor state at that moment, are stated.
-- [ ] Every Stage 4 source file has its own description.
-- [ ] The things left for later milestones are named and excluded.
-- [ ] No Stage 4 module owns resources of Stage 1, Stage 2, or Stage 3.
+- [x] What Stage 4 does and does not do is stated: boot configuration, boot screens, collecting information, the decision, the recovery request, freezing, and starting the kernel.
+- [x] The behavior on x86_64 and on AArch64 is stated.
+- [x] The three ways Stage 4 is entered are stated.
+- [x] The Stage 4 area, who owns it, and how long it lives are stated.
+- [x] `JPBootConfig`, its default values, its rules of validity, its states, and what happens when it is missing or invalid are stated.
+- [x] The lists of named values for the menu outcome, the manager state, and the decision are stated.
+- [x] The selection policy, and the fact that it is chosen when the program is built, are stated.
+- [x] The phase A menu (framebuffer, keyboard, keys, accepting and discarding) and the phase B text screens are stated.
+- [x] The information gathering keeps "not available" states as they are, and defines no `JPBootInfo`.
+- [x] The decision rules and their one-to-one link to the Stage 3 recovery decisions are stated.
+- [x] The part that accepts recovery requests, its results, and the rule that a request is used up once are stated.
+- [x] The order of freezing and the handoff to the kernel are stated.
+- [x] What `jp_kernel_stage2_complete()` does after success and after failure is stated.
+- [x] The boundary between Stage 4 and the kernel, and the processor state at that moment, are stated.
+- [x] Every Stage 4 source file has its own description.
+- [x] The things left for later milestones are named and excluded.
+- [x] No Stage 4 module owns resources of Stage 1, Stage 2, or Stage 3.
 
 ## 4 Specification Traceability
 
@@ -17323,11 +17323,13 @@ Boot Security is the first layer of the Security System (called Layer 0), becaus
 
 A checklist is a list of things to tick off when they are done. A box marked `[x]` is done; an empty box `[ ]` is not done yet.
 
+**Record (2026-11-21).** After Stage 4 was committed, the boxes of this list, of the Stage 2 and Stage 4 Specification Lock Criteria, and of Part 2 of `milestone0_pre_lock.md` were ticked at the request of the project owner, on the evidence of the Implementation Acceptance records of the four stages (unit tests, QEMU tests on x86_64 UEFI, x86_64 BIOS, and AArch64 UEFI, and the manual check under KVM in virt-manager). Four boxes stay empty on purpose: `boot.md` has not been compared with this document; `roadmap.md` still says "Planned"; the tests have not yet passed in GitHub Actions (the first run failed because a sample log was ignored by `.gitignore`; the fix is waiting for the next push); and the tag and the GitHub Release do not exist yet.
+
 ## Documentation
 
-- [ ] The design (Specification Lock) of Stage 1 is recorded as approved.
-- [ ] The Stage 2 review list (Part 1 of [milestone0_pre_lock.md](milestone0_pre_lock.md)) is fully passed, and the design of Stage 2 is recorded as approved.
-- [ ] The design of Stage 3 is recorded as approved.
+- [x] The design (Specification Lock) of Stage 1 is recorded as approved.
+- [x] The Stage 2 review list (Part 1 of [milestone0_pre_lock.md](milestone0_pre_lock.md)) is fully passed, and the design of Stage 2 is recorded as approved.
+- [x] The design of Stage 3 is recorded as approved.
 - [x] The design of Stage 4 is recorded as approved (2026-11-15).
 - [ ] `boot.md` agrees with this document.
 - [ ] `progress.md` and `roadmap.md` are updated when the milestone is finished.
@@ -17338,58 +17340,58 @@ A stage counts as finished only after the Stage Verification Workflow (Rule 26 i
 
 ### Stage 1 — Boot Pipeline Foundation
 
-- [ ] Stage 1 is built, reviewed, and committed.
-- [ ] The system recognizes whether it was started by UEFI or by BIOS, and it refuses the combination AArch64 with BIOS.
-- [ ] It finds the processor, the firmware, and the boot device, and anything it cannot find is reported as not found (it never invents a value).
-- [ ] It reads the memory map, checks it, and rejects a map whose regions overlap or overflow.
-- [ ] It finds and checks the screen memory (the framebuffer), and reports clearly when there is none.
-- [ ] It reads the kernel file, checks that the file is well formed and made for the running processor family, and rejects a damaged or wrong file.
-- [ ] It copies the parts of the kernel to the right memory, fills the empty tails with zeros, and maps each part with the correct permissions (readable, writable, executable).
-- [ ] It sets up the first page tables, the kernel stack, and the processor state that the kernel needs to start.
-- [ ] It calls the Stage 4 menu function exactly once at the right moment, and a failing menu stops the boot.
-- [ ] It declares the system ready (`READY`) only when all of the above really happened, and it gives up the firmware correctly.
+- [x] Stage 1 is built, reviewed, and committed.
+- [x] The system recognizes whether it was started by UEFI or by BIOS, and it refuses the combination AArch64 with BIOS.
+- [x] It finds the processor, the firmware, and the boot device, and anything it cannot find is reported as not found (it never invents a value).
+- [x] It reads the memory map, checks it, and rejects a map whose regions overlap or overflow.
+- [x] It finds and checks the screen memory (the framebuffer), and reports clearly when there is none.
+- [x] It reads the kernel file, checks that the file is well formed and made for the running processor family, and rejects a damaged or wrong file.
+- [x] It copies the parts of the kernel to the right memory, fills the empty tails with zeros, and maps each part with the correct permissions (readable, writable, executable).
+- [x] It sets up the first page tables, the kernel stack, and the processor state that the kernel needs to start.
+- [x] It calls the Stage 4 menu function exactly once at the right moment, and a failing menu stops the boot.
+- [x] It declares the system ready (`READY`) only when all of the above really happened, and it gives up the firmware correctly.
 
 ### Stage 2 — Platform Initialization
 
-- [ ] Stage 2 is built, reviewed, and committed.
-- [ ] The kernel starts with the shared record (`JPBootContext`) and with the processor in the promised state (interrupts off).
-- [ ] The processor, memory, paging, stack, heap, and kernel file state are set up in this order, and each step starts only after the previous one succeeded.
-- [ ] Only one part of the code owns the physical memory, and nobody else hands out memory.
-- [ ] The early heap hands out memory in the promised sizes, returns nothing for a request of zero bytes, and refuses to grow.
-- [ ] The first failure stops the setup, and the original error is passed on and recorded unchanged.
-- [ ] When everything succeeds, Stage 2 hands over to the completion function of Stage 4.
+- [x] Stage 2 is built, reviewed, and committed.
+- [x] The kernel starts with the shared record (`JPBootContext`) and with the processor in the promised state (interrupts off).
+- [x] The processor, memory, paging, stack, heap, and kernel file state are set up in this order, and each step starts only after the previous one succeeded.
+- [x] Only one part of the code owns the physical memory, and nobody else hands out memory.
+- [x] The early heap hands out memory in the promised sizes, returns nothing for a request of zero bytes, and refuses to grow.
+- [x] The first failure stops the setup, and the original error is passed on and recorded unchanged.
+- [x] When everything succeeds, Stage 2 hands over to the completion function of Stage 4.
 
 ### Stage 3 — Boot Diagnostics & Recovery
 
-- [ ] Stage 3 is built, reviewed, and committed.
-- [ ] Boot events are recorded in a log of fixed size; error records are never overwritten, and a full log follows the rule for what to drop.
-- [ ] The boot status moves only along the allowed moves, and a final failure is never replaced by success.
-- [ ] Errors are classified without changing the original result.
-- [ ] Text goes to the screen when screen memory is valid and to the plain-text fallback otherwise, and no heap memory is needed.
-- [ ] A panic is shown once, never loops, and stops the machine with interrupts off.
-- [ ] The recovery decision follows the rules; a retry is refused in Milestone 0; a recovery request goes to the Boot Manager; a refusal leads to stopping the machine.
-- [ ] The Boot Report is finalized once and is read-only afterwards.
+- [x] Stage 3 is built, reviewed, and committed.
+- [x] Boot events are recorded in a log of fixed size; error records are never overwritten, and a full log follows the rule for what to drop.
+- [x] The boot status moves only along the allowed moves, and a final failure is never replaced by success.
+- [x] Errors are classified without changing the original result.
+- [x] Text goes to the screen when screen memory is valid and to the plain-text fallback otherwise, and no heap memory is needed.
+- [x] A panic is shown once, never loops, and stops the machine with interrupts off.
+- [x] The recovery decision follows the rules; a retry is refused in Milestone 0; a recovery request goes to the Boot Manager; a refusal leads to stopping the machine.
+- [x] The Boot Report is finalized once and is read-only afterwards.
 
 ### Stage 4 — Boot manager & UI
 
-- [ ] Stage 4 is built, reviewed, and committed.
-- [ ] The default configuration is valid, an invalid candidate is rejected completely, and a frozen configuration cannot be changed.
-- [ ] The menu appears only when the policy is interactive and a screen and a keyboard exist; every key behaves as described; the user can accept or discard the choice.
-- [ ] The summary shows each state exactly as its owner reported it, and missing information is shown as missing.
-- [ ] The decision follows its rules; the recovery request behaves as described for each decision; the recovery screen shows what went wrong and then waits.
-- [ ] The kernel is started only after the Boot Report is finalized and the configuration is frozen, and it receives the same shared record.
+- [x] Stage 4 is built, reviewed, and committed.
+- [x] The default configuration is valid, an invalid candidate is rejected completely, and a frozen configuration cannot be changed.
+- [x] The menu appears only when the policy is interactive and a screen and a keyboard exist; every key behaves as described; the user can accept or discard the choice.
+- [x] The summary shows each state exactly as its owner reported it, and missing information is shown as missing.
+- [x] The decision follows its rules; the recovery request behaves as described for each decision; the recovery screen shows what went wrong and then waits.
+- [x] The kernel is started only after the Boot Report is finalized and the configuration is frozen, and it receives the same shared record.
 
 ## Engineering Deliverables
 
-- [ ] Firmware abstraction, UEFI layer, and BIOS layer (deliverables 1–3).
-- [ ] Hardware, memory, and framebuffer discovery and checking (deliverables 4–6).
-- [ ] Kernel file discovery, checking, loading, and mapping (deliverables 7–10).
-- [ ] Early processor setup, virtual memory, kernel stack, and heap (deliverables 11–14).
-- [ ] Boot diagnostics, status, errors, panic, and recovery (deliverables 15–19).
-- [ ] Boot-information infrastructure, Boot Manager, Boot Manager screens, and Boot Log (deliverables 20–23).
-- [ ] Kernel handoff, kernel entry stub, and Boot Report (deliverables 24–26).
-- [ ] The test kernel prints the list of all received data, keeps it for 40 seconds or until ESC, and then ends the run, on x86_64 with UEFI, x86_64 with BIOS, and AArch64 with UEFI.
-- [ ] The finished code passes acceptance on x86_64 with UEFI, x86_64 with BIOS, and AArch64 with UEFI; AArch64 with BIOS is rejected.
+- [x] Firmware abstraction, UEFI layer, and BIOS layer (deliverables 1–3).
+- [x] Hardware, memory, and framebuffer discovery and checking (deliverables 4–6).
+- [x] Kernel file discovery, checking, loading, and mapping (deliverables 7–10).
+- [x] Early processor setup, virtual memory, kernel stack, and heap (deliverables 11–14).
+- [x] Boot diagnostics, status, errors, panic, and recovery (deliverables 15–19).
+- [x] Boot-information infrastructure, Boot Manager, Boot Manager screens, and Boot Log (deliverables 20–23).
+- [x] Kernel handoff, kernel entry stub, and Boot Report (deliverables 24–26).
+- [x] The test kernel prints the list of all received data, keeps it for 40 seconds or until ESC, and then ends the run, on x86_64 with UEFI, x86_64 with BIOS, and AArch64 with UEFI.
+- [x] The finished code passes acceptance on x86_64 with UEFI, x86_64 with BIOS, and AArch64 with UEFI; AArch64 with BIOS is rejected.
 - [ ] The project builds without warnings and all tests pass.
 - [ ] An annotated Git tag is created and a GitHub Release is published where applicable (Rules 24 and 25).
 

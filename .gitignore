@@ -26,6 +26,7 @@ compile_commands.json
 
 # Logs
 *.log
+!tests/qemu/samples/*.log
 
 # Claude
 CLAUDE.md
