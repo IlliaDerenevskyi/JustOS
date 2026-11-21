@@ -1,6 +1,6 @@
 # Stage 2 Report: Platform Initialization (for the architecture review, Rule 26)
 
-Status: **the Specification Lock of Stage 2 is signed (2026-11-20); all the code of Stage 2 is written and passes its tests: 7 new host tests (29 in all, gcc and clang, also under AddressSanitizer and UBSan) and the QEMU tests on x86_64 UEFI, x86_64 BIOS (both also under KVM), and AArch64 UEFI (also with `virtualization=on`, the EL2 to EL1 path). The stage is not finished until the architecture review (Rule 26) and the "Implementation Acceptance" of `milestone0.md` (Stage 2) are done by the project owner. Nothing has run on real hardware.**
+Status: **the Specification Lock of Stage 2 is signed (2026-11-20); all the code of Stage 2 is written and passes its tests: 7 new host tests (29 in all, gcc and clang, also under AddressSanitizer and UBSan) and the QEMU tests (8 in all: each platform has the normal run and a `stage2_failure` run that makes the ELF check fail on purpose, to run the failure path of the entry stub) on x86_64 UEFI, x86_64 BIOS (both also under KVM), and AArch64 UEFI (also with `virtualization=on`, the EL2 to EL1 path). The architecture review was done and the stage was committed by the project owner; the "Implementation Acceptance" of `milestone0.md` (Stage 2) was ticked on 2026-11-21 (the QEMU level; level M is left to the project owner). Nothing has run on real hardware.**
 
 How the QEMU tests prove Stage 2: the test kernel now starts through `just_kernel_entry_<arch>` (its ELF entry), so it reaches `kernel_main` only if `jp_kernel_init` returned success and the stub called `jp_kernel_stage2_complete`. That symbol is Stage 4's; the test kernel provides a stand-in in `tests/qemu/test_kernel/fake_stage2_complete.c` that calls `kernel_main`. Before this report the QEMU tests found three real mistakes that the host tests could not see (section 4).
 
@@ -68,7 +68,7 @@ All are in `milestone0.md` ("Decided rules ..." blocks). Items 1 to 8 were asked
 7. The AArch64 QEMU test runs with the Cortex-A72 model only; x86_64 only with QEMU's default CPU and the host CPU (KVM).
 8. `memory.c` zero-fills the table with a loop; the compiler may turn it into a `memset` call if the kernel is built without `-fno-builtin` (the test kernel build has it).
 9. Nothing was run on real hardware; the level M checks remain.
-10. The Specification Lock Decision of Stage 2 was signed by the project owner on 2026-11-20 (Part 1 of `milestone0_pre_lock.md`, Completeness, Traceability, and the Lock Decision are ticked; one item of Part 1 was reworded: "Stage 2 never enables interrupts"). "Implementation Acceptance" of Stage 2 is not ticked.
+10. The Specification Lock Decision of Stage 2 was signed by the project owner on 2026-11-20 (Part 1 of `milestone0_pre_lock.md`, Completeness, Traceability, and the Lock Decision are ticked; one item of Part 1 was reworded: "Stage 2 never enables interrupts"). "Implementation Acceptance" of Stage 2 was ticked on 2026-11-21 (see the record in `milestone0.md`).
 
 ## 6. Conclusion for the review
 

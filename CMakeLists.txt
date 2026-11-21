@@ -146,17 +146,62 @@ if(JP_ENABLE_QEMU_TESTS)
 	# Stage 2 (src/kernel): the test kernel starts through the Stage 2 entry stub, so the QEMU test runs the
 	# real Stage 2. Only the stand-in for the Stage 4 continuation is test code.
 	set(JP_KERNEL_SRC ${CMAKE_SOURCE_DIR}/src/kernel)
+	set(JP_BOOT_STAGE3_DIR ${CMAKE_SOURCE_DIR}/src/boot)   # the Stage 3 files live in src/boot and are linked into the kernel
 	set(JP_KERNEL_COMMON_SOURCES
 		${JP_KERNEL_SRC}/cpu.c ${JP_KERNEL_SRC}/memory.c ${JP_KERNEL_SRC}/paging.c ${JP_KERNEL_SRC}/stack.c
 		${JP_KERNEL_SRC}/heap.c ${JP_KERNEL_SRC}/elf.c ${JP_KERNEL_SRC}/init.c
-		${JP_TEST_KERNEL_DIR}/fake_stage2_complete.c
+		${JP_TEST_KERNEL_DIR}/fake_stage2_complete.c ${JP_TEST_KERNEL_DIR}/fake_boot_manager.c
+		${JP_TEST_KERNEL_DIR}/fake_stage3_lines.c
+		${JP_BOOT_STAGE3_DIR}/boot_log.c ${JP_BOOT_STAGE3_DIR}/boot_status.c ${JP_BOOT_STAGE3_DIR}/error.c
+		${JP_BOOT_STAGE3_DIR}/diagnostic_output.c ${JP_BOOT_STAGE3_DIR}/diagnostic_font.c
+		${JP_BOOT_STAGE3_DIR}/boot_report.c ${JP_BOOT_STAGE3_DIR}/panic.c ${JP_BOOT_STAGE3_DIR}/recovery.c
 	)
 	set(JP_KERNEL_ONLY_MACRO_x86_64 JP_KERNEL_ONLY_X86_64)
 	set(JP_KERNEL_ONLY_MACRO_aarch64 JP_KERNEL_ONLY_AARCH64)
+	set(JP_BOOT_ONLY_MACRO_x86_64 JP_BOOT_ONLY_X86_64)
+	set(JP_BOOT_ONLY_MACRO_aarch64 JP_BOOT_ONLY_AARCH64)
 
 	# The test kernel must not use SSE on x86_64: the BIOS path leaves the SSE bits of CR0 and CR4 off.
-	set(JP_TEST_KERNEL_ARCH_FLAGS_x86_64 -mgeneral-regs-only -mno-red-zone)
+	set(JP_TEST_KERNEL_ARCH_FLAGS_x86_64 -mgeneral-regs-only -mno-red-zone -mcmodel=kernel)
 	set(JP_TEST_KERNEL_ARCH_FLAGS_aarch64 "")
+
+	# jp_add_test_kernel_variant(<platform> <clang target> <architecture> <variant> <extra sources> <excluded source regexes>)
+	# builds build/qemu/<platform>/test_kernel_<variant>.elf: the common kernel sources without the excluded ones, plus the extras.
+	function(jp_add_test_kernel_variant platform target arch variant extra excluded)
+		set(out_dir ${CMAKE_BINARY_DIR}/qemu/${platform})
+		set(variant_kernel ${out_dir}/test_kernel_${variant}.elf)
+		set(variant_sources ${JP_KERNEL_COMMON_SOURCES})
+		foreach(pattern IN LISTS excluded)
+			list(FILTER variant_sources EXCLUDE REGEX "${pattern}")
+		endforeach()
+		add_custom_command(
+			OUTPUT ${variant_kernel}
+			COMMAND ${CMAKE_COMMAND} -E make_directory ${out_dir}
+			COMMAND ${JP_CLANG} --target=${target} -std=c17 -ffreestanding
+				-fno-pic -fno-stack-protector -O2 ${JP_TEST_KERNEL_ARCH_FLAGS_${arch}} -Wall -Wextra -Werror -DJP_TEST_KERNEL_NO_WAIT=1
+				-fuse-ld=lld -nostdlib -Wl,-z,max-page-size=4096
+				-Wl,-T,${JP_TEST_KERNEL_DIR}/kernel_${arch}.ld
+				-I${CMAKE_SOURCE_DIR}/include -I${JP_TEST_KERNEL_DIR}
+				${JP_TEST_KERNEL_SOURCES}
+				${JP_TEST_KERNEL_DIR}/serial_${arch}.c
+				${JP_TEST_KERNEL_DIR}/wait_${arch}.c
+				${variant_sources} ${extra}
+				${JP_KERNEL_SRC}/cpu_regs_${arch}.c ${JP_KERNEL_SRC}/paging_hw_${arch}.c
+				${JP_KERNEL_SRC}/stack_hw_${arch}.c ${JP_KERNEL_SRC}/halt_hw_${arch}.c
+				${JP_KERNEL_SRC}/entry_${arch}.S ${JP_BOOT_STAGE3_DIR}/diagnostic_hw_${arch}.c
+				-D${JP_KERNEL_ONLY_MACRO_${arch}}=1 -D${JP_BOOT_ONLY_MACRO_${arch}}=1 -fno-builtin -I${JP_KERNEL_SRC} -I${JP_BOOT_STAGE3_DIR}
+				-o ${variant_kernel}
+			DEPENDS ${JP_TEST_KERNEL_SOURCES} ${variant_sources} ${extra}
+				${JP_TEST_KERNEL_DIR}/serial_${arch}.c ${JP_TEST_KERNEL_DIR}/wait_${arch}.c
+				${JP_KERNEL_SRC}/cpu_regs_${arch}.c ${JP_KERNEL_SRC}/paging_hw_${arch}.c
+				${JP_KERNEL_SRC}/stack_hw_${arch}.c ${JP_KERNEL_SRC}/halt_hw_${arch}.c
+				${JP_KERNEL_SRC}/entry_${arch}.S
+				${JP_TEST_KERNEL_DIR}/kernel_${arch}.ld ${JP_TEST_KERNEL_DIR}/platform.h ${JP_TEST_KERNEL_DIR}/report.h
+				${JP_TEST_KERNEL_DIR}/screen.h ${JP_TEST_KERNEL_DIR}/wait.h ${JP_TEST_KERNEL_DIR}/font.h
+			VERBATIM
+		)
+		add_custom_target(test_kernel_${platform}_${variant} ALL DEPENDS ${variant_kernel})
+	endfunction()
 
 	# jp_add_qemu_test(<platform> <clang target> <architecture>)
 	function(jp_add_qemu_test platform target arch)
@@ -166,7 +211,7 @@ if(JP_ENABLE_QEMU_TESTS)
 			OUTPUT ${kernel}
 			COMMAND ${CMAKE_COMMAND} -E make_directory ${out_dir}
 			COMMAND ${JP_CLANG} --target=${target} -std=c17 -ffreestanding
-				-fno-pic -fno-stack-protector ${JP_TEST_KERNEL_ARCH_FLAGS_${arch}} -Wall -Wextra -Werror -DJP_TEST_KERNEL_NO_WAIT=1
+				-fno-pic -fno-stack-protector -O2 ${JP_TEST_KERNEL_ARCH_FLAGS_${arch}} -Wall -Wextra -Werror -DJP_TEST_KERNEL_NO_WAIT=1
 				-fuse-ld=lld -nostdlib -Wl,-z,max-page-size=4096
 				-Wl,-T,${JP_TEST_KERNEL_DIR}/kernel_${arch}.ld
 				-I${CMAKE_SOURCE_DIR}/include -I${JP_TEST_KERNEL_DIR}
@@ -176,8 +221,8 @@ if(JP_ENABLE_QEMU_TESTS)
 				${JP_KERNEL_COMMON_SOURCES}
 				${JP_KERNEL_SRC}/cpu_regs_${arch}.c ${JP_KERNEL_SRC}/paging_hw_${arch}.c
 				${JP_KERNEL_SRC}/stack_hw_${arch}.c ${JP_KERNEL_SRC}/halt_hw_${arch}.c
-				${JP_KERNEL_SRC}/entry_${arch}.S
-				-D${JP_KERNEL_ONLY_MACRO_${arch}}=1 -fno-builtin -I${JP_KERNEL_SRC}
+				${JP_KERNEL_SRC}/entry_${arch}.S ${JP_BOOT_STAGE3_DIR}/diagnostic_hw_${arch}.c
+				-D${JP_KERNEL_ONLY_MACRO_${arch}}=1 -D${JP_BOOT_ONLY_MACRO_${arch}}=1 -fno-builtin -I${JP_KERNEL_SRC} -I${JP_BOOT_STAGE3_DIR}
 				-o ${kernel}
 			DEPENDS ${JP_TEST_KERNEL_SOURCES}
 				${JP_KERNEL_COMMON_SOURCES}
@@ -194,6 +239,18 @@ if(JP_ENABLE_QEMU_TESTS)
 				${JP_TEST_KERNEL_DIR}/report.h
 			VERBATIM
 		)
+		# The same test kernel with the ELF check replaced by a fake that fails: the entry stub must take the failure path.
+		jp_add_test_kernel_variant(${platform} ${target} ${arch} stage2_failure "${JP_TEST_KERNEL_DIR}/fake_elf_failure.c" "/elf\\.c$")
+		add_test(NAME qemu_${platform}_stage2_failure
+			COMMAND ${CMAKE_SOURCE_DIR}/tests/qemu/run_test.sh ${platform} ${CMAKE_BINARY_DIR} stage2_failure)
+		set_tests_properties(qemu_${platform}_stage2_failure PROPERTIES LABELS qemu TIMEOUT 120)
+		# Stage 2 fails and the Stage 4 stand-in refuses the recovery transition: Stage 3 must show the panic screen.
+		# The processor stops, so this variant is run by tests/qemu/run_panic_test.py (serial log and a real screen dump).
+		jp_add_test_kernel_variant(${platform} ${target} ${arch} panic
+			"${JP_TEST_KERNEL_DIR}/fake_elf_failure.c;${JP_TEST_KERNEL_DIR}/fake_boot_manager_rejects.c" "/elf\\.c$;/fake_boot_manager\\.c$")
+		add_test(NAME qemu_${platform}_panic
+			COMMAND python3 ${CMAKE_SOURCE_DIR}/tests/qemu/run_panic_test.py ${platform} ${CMAKE_BINARY_DIR})
+		set_tests_properties(qemu_${platform}_panic PROPERTIES LABELS qemu TIMEOUT 120)
 		add_custom_target(test_kernel_${platform} ALL DEPENDS ${kernel})
 		add_test(NAME qemu_${platform}
 			COMMAND ${CMAKE_SOURCE_DIR}/tests/qemu/run_test.sh ${platform} ${CMAKE_BINARY_DIR})
@@ -317,6 +374,43 @@ jp_link_module_if_exists(test_elf src/kernel/memory.c)
 jp_add_unit_test(test_init tests/unit/kernel/test_init.c)
 target_include_directories(test_init PRIVATE ${CMAKE_SOURCE_DIR}/src/kernel)
 jp_link_module_if_exists(test_init src/kernel/init.c)
+
+jp_add_unit_test(test_boot_log tests/unit/diagnostics/test_boot_log.c)
+jp_link_module_if_exists(test_boot_log src/boot/boot_log.c)
+
+jp_add_unit_test(test_boot_status tests/unit/diagnostics/test_boot_status.c)
+jp_link_module_if_exists(test_boot_status src/boot/boot_status.c)
+jp_link_module_if_exists(test_boot_status src/boot/boot_log.c)
+
+jp_add_unit_test(test_diagnostic_output tests/unit/diagnostics/test_diagnostic_output.c)
+target_include_directories(test_diagnostic_output PRIVATE ${CMAKE_SOURCE_DIR}/src/boot)
+jp_link_module_if_exists(test_diagnostic_output src/boot/diagnostic_output.c)
+jp_link_module_if_exists(test_diagnostic_output src/boot/diagnostic_font.c)
+jp_link_module_if_exists(test_diagnostic_output src/boot/boot_log.c)
+
+jp_add_unit_test(test_boot_report tests/unit/diagnostics/test_boot_report.c)
+jp_link_module_if_exists(test_boot_report src/boot/boot_report.c)
+jp_link_module_if_exists(test_boot_report src/boot/error.c)
+jp_link_module_if_exists(test_boot_report src/boot/boot_status.c)
+jp_link_module_if_exists(test_boot_report src/boot/boot_log.c)
+
+jp_add_unit_test(test_panic tests/unit/diagnostics/test_panic.c)
+target_include_directories(test_panic PRIVATE ${CMAKE_SOURCE_DIR}/src/boot)
+jp_link_module_if_exists(test_panic src/boot/panic.c)
+jp_link_module_if_exists(test_panic src/boot/boot_log.c)
+
+jp_add_unit_test(test_recovery tests/unit/diagnostics/test_recovery.c)
+target_include_directories(test_recovery PRIVATE ${CMAKE_SOURCE_DIR}/src/boot)
+jp_link_module_if_exists(test_recovery src/boot/recovery.c)
+jp_link_module_if_exists(test_recovery src/boot/boot_report.c)
+jp_link_module_if_exists(test_recovery src/boot/error.c)
+jp_link_module_if_exists(test_recovery src/boot/boot_status.c)
+jp_link_module_if_exists(test_recovery src/boot/boot_log.c)
+
+jp_add_unit_test(test_error tests/unit/diagnostics/test_error.c)
+jp_link_module_if_exists(test_error src/boot/error.c)
+jp_link_module_if_exists(test_error src/boot/boot_status.c)
+jp_link_module_if_exists(test_error src/boot/boot_log.c)
 
 jp_add_unit_test(test_memory tests/unit/kernel/test_memory.c)
 target_include_directories(test_memory PRIVATE ${CMAKE_SOURCE_DIR}/src/kernel)

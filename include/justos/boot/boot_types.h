@@ -359,24 +359,26 @@ typedef struct JPBootStage2Area {
 	JPBootStage2MemoryEntry entries[JP_KERNEL_MEMORY_MAX_ENTRIES];
 } JPBootStage2Area;
 
-/* ---- Areas reserved for later stages ---- */
+/* ---- Stage 3 area and the area reserved for Stage 4 ---- */
 
 /*
- * Stage 3 and Stage 4 own the contents of these areas; Stage 1 never reads,
- * writes or interprets them. The areas are reserved inside the context so
- * that their lifetime equals the lifetime of the context.
- *
- * TEMPORARY: the real types are defined by Stage 3 and Stage 4. Until those
- * stages exist, a byte block of a generous size is reserved. When a stage
- * defines its type, it replaces the corresponding block here, and the size
- * constant is removed.
+ * The Stage 3 types (diagnostic_types.h) need JPBootResult and
+ * JPArchitectureType from this file, and JPBootContext needs the Stage 3
+ * area, so the header is included here, in the middle of this file. It must
+ * not be included on its own; the Stage 3 headers (error.h, boot_log.h, ...)
+ * include boot_types.h and get the types through it.
  */
-#define JP_BOOT_STAGE3_AREA_RESERVED_BYTES 65536
-#define JP_BOOT_STAGE4_AREA_RESERVED_BYTES 8192
+#include "justos/boot/diagnostic_types.h"
 
-typedef struct JPBootStage3Area {
-	_Alignas(16) uint8_t reserved[JP_BOOT_STAGE3_AREA_RESERVED_BYTES];
-} JPBootStage3Area;
+/*
+ * Stage 4 owns the contents of its area; Stage 1 never reads, writes or
+ * interprets it.
+ *
+ * TEMPORARY: the real type is defined by Stage 4. Until that stage exists, a
+ * byte block of a generous size is reserved. When Stage 4 defines its type,
+ * it replaces the block here, and the size constant is removed.
+ */
+#define JP_BOOT_STAGE4_AREA_RESERVED_BYTES 8192
 
 typedef struct JPBootStage4Area {
 	_Alignas(16) uint8_t reserved[JP_BOOT_STAGE4_AREA_RESERVED_BYTES];

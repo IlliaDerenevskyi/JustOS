@@ -2,7 +2,9 @@
 # One automatic QEMU test (level Q) for one platform: builds the disk image,
 # runs it in QEMU without a window, and checks the serial log.
 #
-# Usage: tests/qemu/run_test.sh <platform> <build-dir>
+# Usage: tests/qemu/run_test.sh <platform> <build-dir> [<variant>]
+#   <variant> (optional): runs test_kernel_<variant>.elf and checks tests/qemu/expected/<platform>.<variant>.txt
+#   (for example stage2_failure: Stage 2 fails on purpose and the run must end with the failed result).
 #
 # Needs in <build-dir>/qemu/<platform>/ :
 #   boot.efi                         the boot application (UEFI platforms)
@@ -17,24 +19,31 @@
 
 set -euo pipefail
 
-if [ "$#" -ne 2 ]; then
-	echo "usage: $0 <platform> <build-dir>" >&2
+if [ "$#" -lt 2 ] || [ "$#" -gt 3 ]; then
+	echo "usage: $0 <platform> <build-dir> [<variant>]" >&2
 	exit 2
 fi
 
 platform="$1"
 build_dir="$2"
+variant="${3:-}"
+kernel_name="test_kernel.elf"
+image_name="disk.img"
+if [ -n "$variant" ]; then
+	kernel_name="test_kernel_${variant}.elf"
+	image_name="disk_${variant}.img"
+fi
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 dir="${build_dir}/qemu/${platform}"
-log="${dir}/serial.log"
+log="${dir}/serial${variant:+_${variant}}.log"
 timeout_s="${JP_QEMU_TEST_TIMEOUT:-60}"
 
 case "$platform" in
 x86_64-bios)
-	parts=(boot_sector.bin loader.bin test_kernel.elf)
+	parts=(boot_sector.bin loader.bin "$kernel_name")
 	;;
 *)
-	parts=(boot.efi test_kernel.elf)
+	parts=(boot.efi "$kernel_name")
 	;;
 esac
 for part in "${parts[@]}"; do
@@ -46,10 +55,10 @@ done
 
 if [ "$platform" = "x86_64-bios" ]; then
 	"${root}/scripts/make_image.sh" "$platform" --boot-sector "${dir}/boot_sector.bin" \
-		--loader "${dir}/loader.bin" --kernel "${dir}/test_kernel.elf" --out "${dir}/disk.img"
+		--loader "${dir}/loader.bin" --kernel "${dir}/${kernel_name}" --out "${dir}/${image_name}"
 else
 	"${root}/scripts/make_image.sh" "$platform" \
-		--boot-app "${dir}/boot.efi" --kernel "${dir}/test_kernel.elf" --out "${dir}/disk.img"
+		--boot-app "${dir}/boot.efi" --kernel "${dir}/${kernel_name}" --out "${dir}/${image_name}"
 fi
 
 extra=()
@@ -58,15 +67,15 @@ if [ "${JP_QEMU_KVM:-0}" = "1" ]; then
 fi
 
 set +e
-"${root}/scripts/run_qemu.sh" "$platform" --image "${dir}/disk.img" \
-	--nographic --timeout "$timeout_s" --serial-log "$log" "${extra[@]}" > "${dir}/run.log" 2>&1
+"${root}/scripts/run_qemu.sh" "$platform" --image "${dir}/${image_name}" \
+	--nographic --timeout "$timeout_s" --serial-log "$log" "${extra[@]}" > "${dir}/run${variant:+_${variant}}.log" 2>&1
 status=$?
 set -e
 
 case "$status" in
 0 | 1) ;;
 124) echo "timeout: the test kernel did not end the run in ${timeout_s} s"; tail -n 20 "$log"; exit 1 ;;
-*) echo "QEMU ended with an unexpected status (${status})"; tail -n 20 "${dir}/run.log"; exit 2 ;;
+*) echo "QEMU ended with an unexpected status (${status})"; tail -n 20 "${dir}/run${variant:+_${variant}}.log"; exit 2 ;;
 esac
 
-"${root}/tests/qemu/check_serial.sh" "$platform" "$log"
+"${root}/tests/qemu/check_serial.sh" "$platform" "$log" ${variant:+"$variant"}

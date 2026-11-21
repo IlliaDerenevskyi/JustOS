@@ -78,4 +78,23 @@ set +e
 [ "$?" -eq 2 ] || { echo "unknown platform must give status 2"; exit 1; }
 set -e
 
+
+# A run that must fail on purpose: the expectation file says which RESULT line ends the log.
+sed -e 's/^JP|stage2_result=SUCCESS$/JP|stage2_result=FAILED/' -e 's/^JP|RESULT=PASS$/JP|RESULT=FAIL|stage2_result/' -e 's/^JP|stage3.status=RUNNING$/JP|stage3.status=RECOVERY/' -e 's/^JP|stage3.error=NONE$/JP|stage3.error=FAILED/' "$good" > "$work/stage2fail.log"
+expect_variant_ok() {
+	"$check" x86_64-uefi "$1" stage2_failure > /dev/null || { echo "expected ok (variant): $2"; exit 1; }
+}
+expect_variant_fail() {
+	if "$check" x86_64-uefi "$1" stage2_failure > /dev/null; then
+		echo "expected failure (variant): $2"
+		exit 1
+	fi
+}
+expect_variant_ok "$work/stage2fail.log" "the failure run"
+expect_fail "$work/stage2fail.log" "the failure run checked as a normal run"
+expect_variant_fail "$good" "a normal run checked as the failure run"
+sed 's/^JP|RESULT=FAIL|stage2_result$/JP|RESULT=PASS/' "$work/stage2fail.log" > "$work/stage2fail_pass.log"
+expect_variant_fail "$work/stage2fail_pass.log" "success reported although Stage 2 failed"
+sed 's/^JP|RESULT=FAIL|stage2_result$/JP|RESULT=FAIL|memory.state/' "$work/stage2fail.log" > "$work/stage2fail_other.log"
+expect_variant_fail "$work/stage2fail_other.log" "another failure key"
 echo "check_serial self-test passed"

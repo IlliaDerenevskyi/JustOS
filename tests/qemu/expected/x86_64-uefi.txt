@@ -26,6 +26,13 @@
 ^JP\|handoff\.paging_enabled=yes$
 ^JP\|handoff\.interrupts_disabled=yes$
 ^JP\|handoff\.ownership_transferred=yes$
+# Stage 3 ran (the stand-in of Stage 4 drives the real Stage 3 code; these lines went through the real diagnostic output).
+^JP\|stage3\.output=OK$
+^JP\|stage3\.status=RUNNING$
+^JP\|stage3\.attempt=1$
+^JP\|stage3\.events=2$
+^JP\|stage3\.error=NONE$
+^JP\|stage3\.report=FINAL$
 # No item may be reported as failed or unknown.
 !^JP\|[a-z_.0-9]*=(FAILED|UNKNOWN|NOT_INITIALIZED)$
 !^JP\|RESULT=FAIL

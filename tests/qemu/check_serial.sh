@@ -2,13 +2,16 @@
 # Checks the serial log of a test-kernel run against the expectations of a
 # platform (the "serial protocol" of milestone0.md).
 #
-# Usage: tests/qemu/check_serial.sh <platform> <serial-log>
+# Usage: tests/qemu/check_serial.sh <platform> <serial-log> [<variant>]
 #   <platform> is x86_64-uefi, x86_64-bios, or aarch64-uefi.
+#   <variant> (optional) selects tests/qemu/expected/<platform>.<variant>.txt, for a run that
+#   must end in a failure on purpose (for example stage2_failure).
 #
 # Rules:
 #   - only lines that start with "JP|" are looked at (firmware and kernel
 #     messages in the same log are ignored);
-#   - the last "JP|" line must be "JP|RESULT=PASS";
+#   - the last "JP|" line must be "JP|RESULT=PASS", or, when the expectation file has a line
+#     "@result <text>", exactly <text> (a run that must fail on purpose);
 #   - every non-empty line of tests/qemu/expected/<platform>.txt that does not
 #     start with '#' is an extended regular expression that must match at least
 #     one "JP|" line; a line that starts with '!' must match none.
@@ -18,15 +21,20 @@
 
 set -euo pipefail
 
-if [ "$#" -ne 2 ]; then
-	echo "usage: $0 <platform> <serial-log>" >&2
+if [ "$#" -lt 2 ] || [ "$#" -gt 3 ]; then
+	echo "usage: $0 <platform> <serial-log> [<variant>]" >&2
 	exit 2
 fi
 
 platform="$1"
 log="$2"
+variant="${3:-}"
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-expected="${root}/tests/qemu/expected/${platform}.txt"
+if [ -n "$variant" ]; then
+	expected="${root}/tests/qemu/expected/${platform}.${variant}.txt"
+else
+	expected="${root}/tests/qemu/expected/${platform}.txt"
+fi
 
 if [ ! -f "$expected" ]; then
 	echo "no expectation file for platform '${platform}': ${expected}" >&2
@@ -49,15 +57,20 @@ if [ ! -s "$lines" ]; then
 	exit 1
 fi
 
+required_result="JP|RESULT=PASS"
+wanted="$(grep -a '^@result ' "$expected" | head -n 1 || true)"
+if [ -n "$wanted" ]; then
+	required_result="${wanted#@result }"
+fi
 last="$(tail -n 1 "$lines")"
-if [ "$last" != "JP|RESULT=PASS" ]; then
-	echo "FAIL: the last JP| line is '${last}', expected 'JP|RESULT=PASS'"
+if [ "$last" != "$required_result" ]; then
+	echo "FAIL: the last JP| line is '${last}', expected '${required_result}'"
 	failures=$((failures + 1))
 fi
 
 while IFS= read -r pattern || [ -n "$pattern" ]; do
 	case "$pattern" in
-	'' | '#'*) continue ;;
+	'' | '#'* | '@'*) continue ;;
 	'!'*)
 		forbidden="${pattern#!}"
 		if grep -aEq -- "$forbidden" "$lines"; then

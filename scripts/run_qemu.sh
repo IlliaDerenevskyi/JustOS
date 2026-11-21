@@ -14,6 +14,8 @@
 #                     (default: build/qemu/<platform>/serial.log)
 #   --timeout SEC     stop the run after SEC seconds (default: no limit; the
 #                     automatic tests use 60)
+#   --qmp SOCKET      also open a QMP control socket (a unix socket file); the panic test uses it to
+#                     take a screen dump (screendump) of what the guest shows
 #   --gdb             start stopped and wait for gdb on tcp::1234
 #   --kvm             hardware acceleration (KVM) with the real host CPU
 #                     (-accel kvm -cpu host). Only for x86_64-uefi and
@@ -51,6 +53,7 @@ image="${out_dir}/disk.img"
 serial_log="${out_dir}/serial.log"
 nographic=false
 gdb=false
+qmp_socket=""
 kvm=false
 timeout_s=0
 
@@ -60,6 +63,7 @@ while [ "$#" -gt 0 ]; do
 	--serial-log) serial_log="$2"; shift 2 ;;
 	--timeout) timeout_s="$2"; shift 2 ;;
 	--nographic) nographic=true; shift ;;
+	--qmp) qmp_socket="$2"; shift 2 ;;
 	--gdb) gdb=true; shift ;;
 	--kvm) kvm=true; shift ;;
 	-h | --help) usage ;;
@@ -137,6 +141,9 @@ if "$nographic"; then
 	args+=(-display none -monitor none -serial "file:${serial_log}")
 else
 	args+=(-serial stdio)
+fi
+if [ -n "$qmp_socket" ]; then
+	args+=(-qmp "unix:${qmp_socket},server,nowait")
 fi
 if "$gdb"; then
 	args+=(-S -gdb tcp::1234)

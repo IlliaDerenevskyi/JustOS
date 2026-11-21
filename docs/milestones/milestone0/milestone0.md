@@ -6061,6 +6061,29 @@ Testing is defined separately by the Stage 2 verification and implementation-acc
 
 Every file listed above requires a complete normative File Specification before implementation begins.
 
+**Private machine-access files (added to this list after the first implementation; they were first named in the "Decided rules" blocks of `cpu`, `paging`, `stack`, `init`).** A C program cannot read a control register or stop the processor, and the unit tests on the host cannot run such instructions. So every Stage 2 module reaches the machine only through small private headers, and the host tests replace them with fakes. These files hold no logic: each function is one or two instructions (inline assembly). They are private to `src/kernel` (no public header names them), and each `.c` file is built only for its own architecture.
+
+```text
+src/kernel/
+├── arch_dispatch.h        chooses the architecture code by handoff.architecture; the build macros
+│                          JP_KERNEL_ONLY_X86_64 / JP_KERNEL_ONLY_AARCH64 remove the other architecture's code
+├── cpu_regs.h             read the registers that cpu.c checks, write EFER.NXE and CR0.WP, CPUID, the
+│                          physical-address width; the constants of the bits
+├── cpu_regs_x86_64.c      the x86_64 functions of cpu_regs.h
+├── cpu_regs_aarch64.c     the AArch64 functions of cpu_regs.h
+├── paging_hw.h            table address to pointer, read and write the root register, set WXN
+├── paging_hw_x86_64.c     CR3
+├── paging_hw_aarch64.c    TTBR0_EL1 with the TLB synchronization, SCTLR_EL1.WXN
+├── stack_hw.h             read the stack pointer
+├── stack_hw_x86_64.c      RSP
+├── stack_hw_aarch64.c     SP
+├── halt_hw.h              stop the processor
+├── halt_hw_x86_64.c       cli and hlt in a loop
+└── halt_hw_aarch64.c      mask all interrupts and wfi in a loop
+```
+
+The kernel (and the test kernel) is built with `-ffreestanding -fno-builtin -mgeneral-regs-only` and, on x86_64, `-mno-red-zone` (without it the stack pushes of the register reader damage local variables of the C code; this was found by the first QEMU run).
+
 ---
 
 # File Specifications
@@ -13521,56 +13544,58 @@ After Specification Lock approval, the implementation is accepted only when it s
 
 ### File Acceptance
 
-- [ ] Every specified file exists.
-- [ ] No required file has been omitted.
-- [ ] No undocumented production file has been introduced.
-- [ ] Headers match their implementations.
-- [ ] Public APIs match the specification.
-- [ ] Internal implementation remains within defined boundaries.
+- [x] Every specified file exists.
+- [x] No required file has been omitted.
+- [x] No undocumented production file has been introduced.
+- [x] Headers match their implementations.
+- [x] Public APIs match the specification.
+- [x] Internal implementation remains within defined boundaries.
 
 ### Functional Acceptance
 
-- [ ] CPU initialization succeeds on valid Stage 1 state.
-- [ ] Memory initialization succeeds on valid Stage 1 state.
-- [ ] Paging initialization succeeds after memory initialization.
-- [ ] Stack initialization succeeds after paging initialization.
-- [ ] Heap initialization succeeds after stack initialization.
-- [ ] ELF initialization succeeds after heap initialization.
-- [ ] Successful initialization reaches the defined completion state.
+- [x] CPU initialization succeeds on valid Stage 1 state.
+- [x] Memory initialization succeeds on valid Stage 1 state.
+- [x] Paging initialization succeeds after memory initialization.
+- [x] Stack initialization succeeds after paging initialization.
+- [x] Heap initialization succeeds after stack initialization.
+- [x] ELF initialization succeeds after heap initialization.
+- [x] Successful initialization reaches the defined completion state.
 
 ### Failure Acceptance
 
-- [ ] Invalid context fails.
-- [ ] CPU failure stops initialization.
-- [ ] Memory failure stops initialization.
-- [ ] Paging failure stops initialization.
-- [ ] Stack failure stops initialization.
-- [ ] Heap failure stops initialization.
-- [ ] ELF failure stops initialization.
-- [ ] Failed initialization does not report success.
-- [ ] Later subsystems are not invoked after failure.
-- [ ] Failure information is propagated according to the contract.
+- [x] Invalid context fails.
+- [x] CPU failure stops initialization.
+- [x] Memory failure stops initialization.
+- [x] Paging failure stops initialization.
+- [x] Stack failure stops initialization.
+- [x] Heap failure stops initialization.
+- [x] ELF failure stops initialization.
+- [x] Failed initialization does not report success.
+- [x] Later subsystems are not invoked after failure.
+- [x] Failure information is propagated according to the contract.
 
 ### Boundary Acceptance
 
-- [ ] No Stage 1 responsibility is duplicated.
-- [ ] No firmware dependency exists.
-- [ ] No Stage 3 dependency exists.
-- [ ] No Stage 4 behavioral dependency exists (only the declared symbol `jp_kernel_stage2_complete`).
-- [ ] Stage 2 establishes all state required at its exit boundary.
-- [ ] The transition to the Stage 2 completion continuation follows the defined contract.
-- [ ] Both entry stubs pass success and failure-path verification for both architectures.
-- [ ] `jp_kernel_stage2_failure()` is available without a Stage 3 dependency and is non-returning.
+- [x] No Stage 1 responsibility is duplicated.
+- [x] No firmware dependency exists.
+- [x] No Stage 3 dependency exists.
+- [x] No Stage 4 behavioral dependency exists (only the declared symbol `jp_kernel_stage2_complete`).
+- [x] Stage 2 establishes all state required at its exit boundary.
+- [x] The transition to the Stage 2 completion continuation follows the defined contract.
+- [x] Both entry stubs pass success and failure-path verification for both architectures.
+- [x] `jp_kernel_stage2_failure()` is available without a Stage 3 dependency and is non-returning.
 
 ### Build Acceptance
 
-- [ ] Stage 2 compiles.
-- [ ] Stage 2 links with the expected kernel environment.
-- [ ] No unresolved Stage 2 symbols remain.
-- [ ] No undocumented dependency is required.
-- [ ] Architecture-specific compilation targets x86_64 and AArch64.
-- [ ] Functional acceptance passes separately for x86_64 and AArch64.
-- [ ] Verification does not rely solely on successful compilation.
+- [x] Stage 2 compiles.
+- [x] Stage 2 links with the expected kernel environment.
+- [x] No unresolved Stage 2 symbols remain.
+- [x] No undocumented dependency is required.
+- [x] Architecture-specific compilation targets x86_64 and AArch64.
+- [x] Functional acceptance passes separately for x86_64 and AArch64.
+- [x] Verification does not rely solely on successful compilation.
+
+**Record of the acceptance (Stage 2).** Ticked on 2026-11-21 after the architecture review and the commit `Stage 2 — Platform Initialization`, with this evidence: the unit tests of all seven modules (gcc and clang, also under AddressSanitizer and UBSan) and their mutation checks; the QEMU tests on x86_64 UEFI, x86_64 BIOS (both also under KVM), and AArch64 UEFI (also with `virtualization=on`), in two variants each: the normal run (success path of the entry stub) and the run in which the ELF check is replaced by a fake that fails (`stage2_failure`: failure path of the stub, `jp_kernel_stage2_failure`, and the failed result reported by the test kernel); a search of `src/kernel` and `include/justos/kernel` for firmware, Stage 3, Stage 4, `malloc`, `memcpy`, `memset`, `TODO`, and mutable global data (none). **Level M (real hardware) is not part of this acceptance:** nothing of Stage 2 has run on a real machine, and the project owner will run the whole milestone by hand under KVM and on hardware after the last stage.
 
 ---
 
@@ -14409,6 +14434,51 @@ After successful finalization:
 - terminal halt may consume the same finalized view without returning to normal initialization.
 
 Finalization is idempotent. Repeating it returns the existing finalized report and does not change sequence numbers, counters, ownership, or report contents. A failed finalization attempt does not partially publish final state.
+
+## 3 Decided rules (what the first implementation needed that the text above leaves open)
+
+This block was written when Stage 3 was audited against the finished Stage 1 and Stage 2. Each rule says what is decided and why. The decisions on the serial port, the font, the journal, and the stopping routine were taken together with the project owner; the others follow from the text and are listed so that a reader can disagree.
+
+**Where Stage 3 runs, and who calls it.** Stage 1 runs in the boot application. Stage 2 and Stage 3 run inside the kernel, after the entry stub, so the Stage 3 files (`src/boot/boot_log.c` and the others of the folder list) are linked into the kernel image, not into the boot application. Stage 3 has no entry function of its own: it is a set of functions that the Stage 4 Boot Manager calls, in the order that "Stage 4 Execution Flow" (steps 3 to 7 of `jp_kernel_stage2_complete`) gives. Stage 3 never starts itself.
+
+**The stopping routine.** Stage 4 says "stop the machine with the Stage 3 stopping routine" when the context is `NULL` or the log cannot start (nothing can be recorded). That routine is `jp_boot_recovery_enter(NULL, JP_RECOVERY_TERMINAL_HALT)`: with a `NULL` context and only this decision, the function writes nothing (there is nowhere to write) and stops the processor (x86_64: `cli`, then `hlt` in a loop; AArch64: mask all interrupts, then `wfi` in a loop). With a `NULL` context and any other decision it does the same (it never returns and never pretends that a recovery began). With a real context and `JP_RECOVERY_TERMINAL_HALT` it first finalizes the report as the specification says, and then stops the processor.
+
+**The `stage3` area.** The context holds one area for Stage 3 (`JPBootContext.stage3`, type `JPBootStage3Area`). It replaces the temporary byte block that Stage 1 reserved. It contains, in this order: the log storage (`JPBootLogStorage`); the attempt state (`JPBootAttemptState`); the status state (`JPBootStatusState`) and a flag that says whether it exists; the current error (`JPBootError`) and a flag that says whether one was recorded; the panic state (`JPBootPanicState`) and the first panic record (a copy of the `JPBootError` that caused it); the recovery state (`JPBootRecoveryState`); the output state (below); and the report (`JPBootReport`). Why an area inside the context: the project forbids global variables and allocation, and the failure path may not use the heap. The types are declared by the Stage 3 headers; so that `JPBootContext` is one complete object, the declarations that the area needs are collected in one header, `include/justos/boot/diagnostic_types.h`, that `boot_types.h` includes (and that gives an error if it is included on its own); the Stage 3 headers declare the functions and include `boot_types.h`; the header `include/justos/boot/boot_manager.h` is created with only the recovery-transition boundary that Stage 3 needs (Stage 4 adds the rest) (the exact header split is free as long as every type and function name keeps its spelling). `jp_boot_log_initialize()` clears the whole area to zero before it does anything else. A second call to `jp_boot_log_initialize()` or `jp_boot_status_initialize()` is `JP_BOOT_FAILED` and changes nothing.
+
+**Boot attempt identity.** There is no clock and no random number source in Milestone 0, so the identity of an attempt is a counter: the first attempt has `attempt_sequence` 0 and `boot_attempt_id` 1; every retry adds one to both. An identity is never reused because the counter only grows. `maximum_retry_count` is the constant `JP_BOOT_MAXIMUM_RETRY_COUNT` (defined with the Stage 3 types, so every Stage 3 header sees it, `recovery.h` among them) and its value is 0: Milestone 0 never retries (Stage 4 also says so). `jp_boot_log_initialize()` sets `boot_attempt_id` to 1, `attempt_sequence` to 0, `retry_count` to 0, and the maximum.
+
+**What the log holds at the start.** Stage 1 and Stage 2 never wrote to a log (Stage 3 did not exist), and Stage 3 does not invent events. `jp_boot_log_initialize()` writes exactly one event, number 0, that is only a copy of facts that the context already holds about Stage 1: stage `JP_DIAGNOSTIC_STAGE_STAGE1`, source `JP_BOOT_SOURCE_STAGE1`, the architecture from `handoff.architecture`, and diagnostic context 0. If `context->current_stage` is `JP_BOOT_STAGE_READY` and `handoff.state` is `JP_HANDOFF_STATE_READY`, the severity is `INFO` and the result is `JP_BOOT_SUCCESS`; if not, the severity is `ERROR` and the result is `JP_BOOT_FAILED` (this cannot happen after a Stage 2 that checked its entry, but the record must tell the truth). Every other event is added by the caller (Stage 4 adds the Stage 2 result, as its flow says).
+
+**Default severity.** The text gives a default recoverability for every result but not a default severity. The default severity is `FATAL` for a result that is `NON_RECOVERABLE` (`JP_BOOT_ERROR_INVALID_PARAM`, `JP_BOOT_ERROR_CORRUPTED_DATA`) and `ERROR` for every other result that is not `JP_BOOT_SUCCESS`. An override may raise a severity but never lower a `FATAL` one (the text already says so for `FATAL` and `NON_RECOVERABLE`).
+
+**The status graph, exactly.** `jp_boot_status_update(context, stage, status)` allows only these changes (the text above names the ends; the arrows are the whole graph): `BOOTING` to `INITIALIZING`; `INITIALIZING` to `RUNNING` or `FAILED`; `RUNNING` to `FAILED` or `RECOVERY`; `FAILED` to `RECOVERY` or `HALTED`; `RECOVERY` to `BOOTING` (a new attempt) or `HALTED`. Everything else, including "change to the same status", is refused with `JP_BOOT_FAILED` and changes nothing. The `stage` argument is the *tag* (the label that says which stage the change is about) and must fit the change: `BOOTING` accepts `STAGE1` or `STAGE3`; `INITIALIZING` accepts `STAGE1` or `STAGE2`; `RUNNING`, `RECOVERY`, and `HALTED` accept `STAGE3`; `FAILED` accepts any of the four stages. A tag that does not fit, or `JP_DIAGNOSTIC_STAGE_UNKNOWN`, is `JP_BOOT_ERROR_INVALID_PARAM`. A change to `FAILED` needs a recorded error (otherwise `JP_BOOT_FAILED`: a failure is never made up) and copies the severity, recoverability, and original result of that error into the status. A status change after the report is final is `JP_BOOT_FAILED`.
+
+**The log when it is full, exactly.** When 256 events are kept and a new event arrives: find the retained event with the lowest severity (and, among those, the latest one). That event may be replaced only if its severity is `INFO` or `WARNING` and is lower than the severity of the new event; then it is removed, the later events move one place down, the new event is added at the end with the next sequence number, and one discard is counted. In every other case the new event is dropped: the sequence number is not used, and one discard is counted. In both cases `truncated` becomes `true`. So an `ERROR` or `FATAL` event that is already in the log is never removed, even for a newer `FATAL` event (the new one is dropped and counted). `boot_attempt_id` and `event_sequence` of an event are always set by the log; what the caller puts there is ignored. An event whose `architecture` is not the one of `context->handoff.architecture`, or whose stage, severity, source, or result is outside its enumeration, is `JP_BOOT_ERROR_INVALID_PARAM`.
+
+**The error record, exactly.** `jp_boot_error_create()` records at most one error for an attempt: the second call is `JP_BOOT_FAILED` and changes nothing (the first error stays the only one). An override that would weaken the default (a severity lower than `FATAL` for a `FATAL` default, or a recoverability other than `NON_RECOVERABLE` for a `NON_RECOVERABLE` default) makes the whole call `JP_BOOT_ERROR_INVALID_PARAM`. `jp_boot_error_clear()` works only while the status is `BOOTING` and the report is not final (that is, for a new attempt); otherwise `JP_BOOT_FAILED`.
+
+**What `jp_boot_recovery_decide()` returns in Milestone 0.** The error must exist (otherwise `JP_BOOT_NOT_INITIALIZED`, except that a recovery asked for through the configuration is allowed without an error while the status is `RUNNING`, as the text says). Then, in this order: a `NON_RECOVERABLE` error or an exhausted retry counter gives `JP_RECOVERY_TERMINAL_HALT`; `retry_count < maximum_retry_count` gives `JP_RECOVERY_RETRY` (never in Milestone 0, because the maximum is 0); otherwise `JP_RECOVERY_ENTER`, because the destination (the Stage 4 recovery diagnostics state) always exists in Milestone 0. So a `RECOVERABLE` or `UNKNOWN` error (for example `JP_BOOT_FAILED` from Stage 2) gives `JP_RECOVERY_ENTER`, and a corrupted-data error gives `JP_RECOVERY_TERMINAL_HALT`.
+
+**Where the text goes (diagnostic output).** `jp_boot_diagnostic_output()` sends each message to two places and succeeds if at least one accepted it.
+1. The framebuffer, if it is *valid*: `framebuffer.state` is `JP_DETECTION_STATE_DETECTED`, `base_address` is not zero, `width`, `height`, and `pitch` are not zero, the format is `JP_FRAMEBUFFER_FORMAT_RGB_888` or `JP_FRAMEBUFFER_FORMAT_BGR_888` (32 bits per pixel), and `pitch` is at least `width * 4` and a multiple of 4 (so that every pixel is one aligned 32-bit store). Pixels are written at the framebuffer's address (Stage 2 keeps it mapped, uncached). Text is drawn with a built-in font of 8 by 16 pixels (ASCII 32 to 126; any other character is drawn as `?`), white on black. A screen line is 16 pixels high and as many as `width / 8` characters wide, at most 80. The output state counts the next free line, starting at 0; each message takes the next line, the part of the message that is longer than the line is not shown on the screen (the serial output still has all of it), and when no line is left the message is not shown on the screen and counts as "this sink refused it". Drawing one line first fills its 16 pixel rows with black, so old content never shows through.
+2. The serial port, the fallback that needs no display. x86_64: the port COM1 (I/O address `0x3F8`), 115200 baud, 8 data bits, no parity, 1 stop bit (the same as the BIOS loader). AArch64: the PL011 UART at the address `0x09000000` (the one that QEMU's `virt` machine has; the AArch64 machine of Milestone 0 has no device discovery, so the address is fixed). The first message probes the port: x86_64 writes two different values (`0x5A`, then `0xA5`) to the scratch register (port `0x3F8 + 7`) and reads each one back; AArch64 reads the PL011 identification registers (each is a 32-bit register whose lowest byte counts): the byte at offset `0xFE0` must be `0x11`, at `0xFE4` `0x10`, at `0xFE8` must have `0x4` in its low four bits, and the four bytes at offsets `0xFF0`, `0xFF4`, `0xFF8`, `0xFFC` must be `0x0D 0xF0 0x05 0xB1`. A port that fails the probe is *not available* and the result is remembered in the output state (`serial_probed`, `serial_available`); an unavailable port never receives a byte and is never reported as having printed (Rule 30). A message is sent as its characters, a carriage return, and a line feed; a message longer than 255 characters is cut at 255.
+If both sinks refuse, the result is `JP_BOOT_FAILED`; the failure is counted in the output state (`failed_messages`) and never starts a panic. The output state is part of the `stage3` area: `next_line` (32 bits), `serial_probed`, `serial_available` (booleans), `failed_messages` (32 bits).
+
+**The serial port in detail.** The hardware functions are only three, in `diagnostic_hw.h`: `jp_diagnostic_serial_read(offset)` and `jp_diagnostic_serial_write(offset, value)` (x86_64: one byte at the port `0x3F8 + offset`; AArch64: one 32-bit register at the address `0x09000000 + offset`) and the stopping function. Everything else is logic in `diagnostic_output.c`, so the host tests can run it with a fake port. *x86_64, the first message:* program the port (interrupts off: `IER` 0; `LCR` `0x80` to open the divisor; divisor 1 in `DLL`/`DLM`, which is 115200 baud; `LCR` `0x03` for 8N1; `FCR` `0xC7` to clear and enable the FIFO; `MCR` `0x0B`), then run the scratch-register probe; the port is available only if both values read back. *AArch64:* the port is used as the firmware left it (the clock of the UART is not known, so the baud rate is not touched); the probe is the identification check. *Sending a byte:* x86_64 waits until bit 5 of `LSR` (register 5) says that the transmitter is empty, then writes register 0; AArch64 waits until bit 5 of `FR` (offset `0x18`) says that the transmit FIFO is not full, then writes `DR` (offset 0). The wait is bounded (`JP_DIAGNOSTIC_SERIAL_SPIN_LIMIT`, 100000 reads); a byte that could not be sent makes the serial sink refuse the message (the rest of the message is not sent). Characters outside 32 to 126 are sent as `?`, so a message can never send a control sequence.
+
+**The panic screen.** `jp_boot_panic()` sends these lines, in this order, through `jp_boot_diagnostic_output()` (one message per line, the stage tag `JP_DIAGNOSTIC_STAGE_STAGE3`, the source `JP_BOOT_SOURCE_PANIC`): `JustOS boot failure`, `attempt: <boot_attempt_id in decimal>`, `stage: <STAGE1|STAGE2|STAGE3|STAGE4|UNKNOWN>`, `result: <the name of the JPBootResult, for example JP_BOOT_FAILED>`, `severity: <INFO|WARNING|ERROR|FATAL>`, `recoverability: <RECOVERABLE|NON_RECOVERABLE|UNKNOWN>`, `source: <the name of the source component without the JP_BOOT_SOURCE_ prefix>`, `context: 0x<diagnostic_context in 8 hexadecimal digits>`. A name that is not in the vocabulary is `UNKNOWN`. Then it stops the processor.
+
+**Panic, in detail.** `jp_boot_panic(context, error)` does this, in order. (1) A `NULL` context, or a context whose Stage 3 log never started, cannot hold or show anything: the processor is stopped. (2) If the panic state is not `NORMAL` (a panic is already requested, active, presented, or terminal), this is a *recursive* panic: no line is shown again, the first panic record stays as it is, one `FATAL` event with `diagnostic_context` 1 is added to the log if the log can take it (a refusal is ignored), the state becomes `TERMINAL`, and the processor is stopped. (3) Otherwise this is the first panic: the state becomes `REQUESTED` and then `ACTIVE`; the error that is shown is the `error` argument, or, when it is `NULL`, the recorded error of the attempt, or, when there is none, an error made of the result `JP_BOOT_UNKNOWN`, stage `JP_DIAGNOSTIC_STAGE_UNKNOWN`, severity `FATAL`, recoverability `UNKNOWN` (a panic never invents a cause); a copy is kept as the first panic record (`first_panic`); one `FATAL` event (source `JP_BOOT_SOURCE_PANIC`, stage `JP_DIAGNOSTIC_STAGE_STAGE3`, the result and the diagnostic context of that error) is added to the log if it can take it; the eight lines of the panic screen are sent (a refused line is ignored); the state becomes `DIAGNOSTIC_PRESENTED` and then `TERMINAL`; the processor is stopped. Interrupts are never turned on. The name that a line shows for a `JPBootResult` is its C name without extra text, for example `JP_BOOT_FAILED`; for a stage it is `STAGE1` to `STAGE4` or `UNKNOWN`; for a severity `INFO`, `WARNING`, `ERROR`, `FATAL`; for a recoverability `RECOVERABLE`, `NON_RECOVERABLE`, `UNKNOWN`; for a source the C name without `JP_BOOT_SOURCE_` (`BOOT_MANAGER` and so on). The numbers in the lines are written without any library: `attempt` in decimal, `context` as `0x` and eight hexadecimal digits with capital letters (`0x00001234`).
+
+**Recovery, in detail.** `jp_boot_recovery_decide()` has the answers above plus: a status `HALTED` or a panic state `TERMINAL` always gives `JP_RECOVERY_TERMINAL_HALT`; no recorded error gives `JP_BOOT_FAILED`, except in the status `RUNNING` where it gives `JP_RECOVERY_ENTER` (recovery asked for through the configuration); `JP_RECOVERY_RETRY` is given only when the status is `FAILED` or `RECOVERY` and the panic state is `NORMAL`. `jp_boot_recovery_enter(context, decision)` stores the decision in the recovery state and then: *`JP_RECOVERY_ENTER`*: the status becomes `RECOVERY` (tag `STAGE3`; it is skipped when the status already is `RECOVERY`), and `jp_boot_manager_request_recovery()` is called with the recovery state; if it answers `ACCEPTED`, the destination has begun and the processor is stopped here (Stage 3 has nothing more to do); if it answers `REJECTED` or `TERMINAL` (or anything else), the terminal path below is taken. *`JP_RECOVERY_RETRY`*: allowed only when the decision rules above would give it now; otherwise the terminal path. The new attempt is prepared as the reset table says (new identity = the old one plus 1, `attempt_sequence` and `retry_count` plus 1, `previous_attempt_id` = the old identity, the log keeps its events and restarts `event_sequence` at 0, one event is added that holds the error of the old attempt (so the history keeps it), the current error is removed, the status goes `RECOVERY` and then `BOOTING`, the panic state stays `NORMAL`), `jp_boot_manager_request_recovery()` is called, and if it answers anything but `ACCEPTED` every change is undone (the old attempt stays current, `retry_count` is as it was) and the terminal path is taken; if it answers `ACCEPTED` the processor is stopped here. *`JP_RECOVERY_TERMINAL_HALT`, an invalid decision, and the terminal path*: with a `NULL` context or a context whose log never started, the processor is stopped at once; otherwise the status becomes `HALTED` when the graph allows it (from `FAILED` or `RECOVERY`), the report is finalized, and then, if an error is recorded, `jp_boot_panic()` shows it and stops the processor; if no error is recorded the processor is stopped.
+
+**The Boot Report, in detail.** `jp_boot_report_finalize()` first checks that the records agree: the recovery state and the error (if any) belong to the current attempt (the same `boot_attempt_id`); the status `FAILED` has a recorded error, and for `FAILED`, `RECOVERY`, and `HALTED` with a recorded error the status holds that error's original result; `retry_count` is not above `maximum_retry_count`; the log holds at most `JP_BOOT_LOG_CAPACITY` events and the same number as its status says. If a check fails the result is `JP_BOOT_ERROR_CORRUPTED_DATA` and nothing is published. Then it sets `recovery.exhausted` (true when `retry_count > 0` and `retry_count >= maximum_retry_count`), closes the log, builds the report from copies (when no error is recorded, the `error` of the report is all zero: a real error never has the original result `JP_BOOT_SUCCESS`, so a zero error means "none"), and only then sets `finalized` in the report. A second call changes nothing and returns `JP_BOOT_SUCCESS`. `jp_boot_report_get()` returns `JP_BOOT_NOT_INITIALIZED` until the report is final.
+
+**The machine access of Stage 3.** A C program cannot write a port, read a UART register, or stop the processor, and the host tests cannot run such instructions. So Stage 3 has its own small private files, in the same style as the private machine-access files of Stage 2: `src/boot/diagnostic_hw.h` (declares: write one byte to the serial port, read one byte of the serial port registers for the probe, stop the processor), `src/boot/diagnostic_hw_x86_64.c`, and `src/boot/diagnostic_hw_aarch64.c` (a few instructions each, no logic). The font is `src/boot/diagnostic_font.h` and `src/boot/diagnostic_font.c` (the data of the 95 characters; the file is generated by `scripts/gen_font.py`, as the font of the test kernel is). These files are in addition to the folder list above.
+
+**How the QEMU tests run Stage 3 before Stage 4 exists.** The test kernel links the real Stage 3 files (and the Stage 2 files). The stand-in `jp_kernel_stage2_complete()` (`tests/qemu/test_kernel/fake_stage2_complete.c`) does the Stage 3 part of the Stage 4 flow (start the log and the status, record the Stage 2 result, set the status, finalize the report, go to `kernel_main`; after a Stage 2 failure it creates the error, decides, and calls `jp_boot_recovery_enter()`), and the stand-in `jp_boot_manager_request_recovery()` (`fake_boot_manager.c`) plays the recovery destination (it finalizes the report and goes to `kernel_main`). Both send lines of the form `JP|stage3.<key>=<value>` through `jp_boot_diagnostic_output()`, the real output, so a line that is missing from the serial log means that the real output failed. The keys are `output` (`OK`), `status` (the status name), `attempt` (the attempt identity), `events` (the number of log events), `error` (the name of the original result without `JP_BOOT_`, or `NONE`), and `report` (`FINAL` or `NOT_FINAL`). The expected values are in `tests/qemu/expected/<platform>.txt` and `<platform>.stage2_failure.txt`. The kernel (and the test kernel) is built with `-O2` and, on x86_64, `-mcmodel=kernel` (a kernel in the upper half of the address space needs it); no Stage 2 or Stage 3 code may need `memcpy`, `memset`, or any other library function (a structure assignment that is large enough makes the compiler call `memcpy`, so large records are copied field by field).
+
+**What Stage 3 needs from Stage 4 before Stage 4 exists.** `jp_boot_recovery_enter()` ends in `jp_boot_manager_request_recovery()` (the only link to Stage 4). Until Stage 4 is written, the unit tests of `recovery` use a fake of that function, and the QEMU tests of Stage 3 use a stand-in in the test kernel (listed with the other stand-ins that are removed after Stage 4).
 
 ## 3 File Specifications
 
@@ -15559,28 +15629,28 @@ Stage 4 consumes the environment prepared by Stage 2 and the read-only Boot Repo
 
 ## 3 Specification Lock Criteria
 
-- [ ] Stage 3 scope is explicitly limited to diagnostics and recovery.
-- [ ] x86_64 and AArch64 common and architecture-specific behavior is defined.
-- [ ] Stage 3 normal and failure execution contexts are defined.
-- [ ] Boot attempt identity, attempt sequence, retry count, and event sequence are defined.
-- [ ] Boot status lifecycle and mutation authority are defined.
-- [ ] Boot event structure and bounded-storage policy are defined.
-- [ ] Event ordering and overflow retention policy are defined.
-- [ ] Error structure, severity, recoverability, and result preservation are defined.
-- [ ] Error classification and idempotence are defined.
-- [ ] Diagnostic output routing and non-graphical fallback are defined.
-- [ ] Panic presentation and non-graphical fallback are defined.
-- [ ] Panic lifecycle and recursive-panic behavior are defined.
-- [ ] Recovery decisions and retry exhaustion are defined.
-- [ ] Recovery transition ownership and reset/preservation semantics are defined.
-- [ ] Existing recovery-transition interface and Stage 3 → transition → new-attempt boundary are defined.
-- [ ] Ownership and lifetime of diagnostic records are defined.
-- [ ] Stage 2 failure path to Stage 3 is defined.
-- [ ] Stage 3 → Stage 4 boundary is defined.
-- [ ] Canonical Boot Report data and read-only Stage 4 consumption are defined.
-- [ ] Diagnostic finalization order, idempotence, failure behavior, and immutability are defined.
-- [ ] Every Stage 3 production file has a normative file specification.
-- [ ] No Stage 3 component owns Stage 1/Stage 2 resources.
+- [x] Stage 3 scope is explicitly limited to diagnostics and recovery.
+- [x] x86_64 and AArch64 common and architecture-specific behavior is defined.
+- [x] Stage 3 normal and failure execution contexts are defined.
+- [x] Boot attempt identity, attempt sequence, retry count, and event sequence are defined.
+- [x] Boot status lifecycle and mutation authority are defined.
+- [x] Boot event structure and bounded-storage policy are defined.
+- [x] Event ordering and overflow retention policy are defined.
+- [x] Error structure, severity, recoverability, and result preservation are defined.
+- [x] Error classification and idempotence are defined.
+- [x] Diagnostic output routing and non-graphical fallback are defined.
+- [x] Panic presentation and non-graphical fallback are defined.
+- [x] Panic lifecycle and recursive-panic behavior are defined.
+- [x] Recovery decisions and retry exhaustion are defined.
+- [x] Recovery transition ownership and reset/preservation semantics are defined.
+- [x] Existing recovery-transition interface and Stage 3 → transition → new-attempt boundary are defined.
+- [x] Ownership and lifetime of diagnostic records are defined.
+- [x] Stage 2 failure path to Stage 3 is defined.
+- [x] Stage 3 → Stage 4 boundary is defined.
+- [x] Canonical Boot Report data and read-only Stage 4 consumption are defined.
+- [x] Diagnostic finalization order, idempotence, failure behavior, and immutability are defined.
+- [x] Every Stage 3 production file has a normative file specification.
+- [x] No Stage 3 component owns Stage 1/Stage 2 resources.
 
 ## 3 Specification Traceability
 
@@ -15617,6 +15687,8 @@ or:
 Specification Completeness Verification: FAIL
 ```
 
+**Record of the verification (Stage 3).** `PASS`, 2026-11-21. The list of completeness criteria above was ticked after the contract was implemented and tested, against the finished text, so the ticks confirm that the text describes what was built: the "3 Decided rules" block holds the decisions that the older text did not define, and every Stage 3 production file (including the private files `diagnostic_font`, `diagnostic_hw`, and `diagnostic_hw_<arch>`) is described.
+
 ## 3 Specification Lock Decision
 
 Stage 3 receives Specification Lock only when:
@@ -15633,6 +15705,8 @@ Otherwise:
 ```text
 SPECIFICATION LOCK = REJECTED
 ```
+
+**Record of the decision (Stage 3).** `SPECIFICATION LOCK = APPROVED`, signed by the project owner on 2026-11-21, after the contract was implemented and verified: the unit tests of all Stage 3 modules (gcc and clang) with mutation checks; the QEMU tests on x86_64 UEFI, x86_64 BIOS (both also under KVM), and AArch64 UEFI, in three variants each: the normal run, the run in which Stage 2 fails and Stage 3 enters recovery, and the run in which Stage 2 fails and the recovery transition is refused (`panic`). In the `panic` variant the test asks QEMU for a screen dump (`screendump`, the picture that the virtual display really shows) and compares the Stage 3 text area pixel by pixel with the expected text, and it reads the eight panic lines from the serial log. Two things are **not** covered by this decision: level M (nothing of Stage 3 ran on real hardware; the project owner runs the whole milestone by hand after the last stage), and the older text of Stage 3 (before the "3 Decided rules" block), which has not been rewritten yet for the junior-readability test. "Implementation Acceptance" below is a separate step and is not ticked by this decision.
 
 ## 3 Implementation Acceptance
 
@@ -15652,6 +15726,8 @@ It requires:
 - no Stage 1/Stage 2 ownership corruption;
 - no unresolved Stage 3 symbols;
 - no Stage 4 dependency other than the single recovery-transition boundary.
+
+**Record of the acceptance (Stage 3).** All twelve items above are met; ticked on 2026-11-21 after the architecture review and the commit `Stage 3 — Boot Diagnostics & Recovery`, with this evidence: the unit tests of all Stage 3 modules (gcc and clang, 36 tests in all) and their mutation checks (the survivors are equivalent changes); the QEMU tests on x86_64 UEFI, x86_64 BIOS (both also under KVM), and AArch64 UEFI, in three variants each: the normal run (the lines `JP|stage3.*` pass through the real serial output), the run in which Stage 2 fails and Stage 3 enters recovery, and the run `panic` in which the recovery transition is refused (the eight panic lines in the serial log and a real screen dump compared pixel by pixel; a panic does not end with a test result); the retry and its undo only by unit tests, because the maximum is 0 in Milestone 0; a search of the Stage 3 sources for Stage 4 and Stage 2 references (only `jp_boot_manager_request_recovery`), `malloc`, `memcpy`, `memset`, `TODO`, mutable global data, and writes to the fields of Stage 1 and Stage 2 (none). **Not part of this acceptance:** level M (nothing of Stage 3 ran on a real machine; the project owner runs the whole milestone by hand after the last stage), and the Stage 4 stand-ins, which Stage 4 replaces.
 
 ## 3 Final Lock Statement
 
