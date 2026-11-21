@@ -39,7 +39,7 @@
 
 The Just Boot System is responsible for establishing the initial execution environment of the engineering system.
 
-Its responsibility begins when the firmware transfers execution to the Boot Manager and ends when control is transferred to the Just kernel.
+Its responsibility begins when the firmware transfers execution to the Boot Manager and ends when control is transferred to the kernel.
 
 The boot system performs orchestration rather than operating system functionality.
 
@@ -47,11 +47,13 @@ Its purpose is to collect the information required by the kernel, validate the b
 
 The boot process must remain predictable, reproducible and architecture-independent whenever possible.
 
+**Which kernel.** In this document "the kernel" means the kernel image that the Boot Manager hands control to. In the finished distribution this is the Linux kernel. The Just kernel (the kernel of the distribution) is not started by the Boot Manager: it starts later, from the running Linux kernel, as one of its processes (see `kernel.md`). Milestone 0 builds and proves the boot machinery and proves the hand-over with a test kernel, in the format that Milestone 0 defines (`JPBootContext` together with `JPHandoffInfo`). The hand-over to the Linux kernel in the way Linux expects to be started is not part of Milestone 0 (see "Open Decisions" in `kernel.md`).
+
 ---
 
 # Purpose
 
-The purpose of the Boot System is to create a reliable and deterministic transition between firmware and the Just kernel.
+The purpose of the Boot System is to create a reliable and deterministic transition between firmware and the kernel.
 
 During startup it discovers the execution environment, initializes essential boot services, validates the selected kernel image and prepares the normalized `JPBootContext` and `JPHandoffInfo` transfer contract passed to Stage 2.
 
@@ -157,7 +159,7 @@ Boot Security and Handoff State
 Kernel Handoff
       │
       ▼
-Just Kernel
+Kernel
 ```
 
 The Boot Manager coordinates this entire pipeline.
@@ -672,7 +674,7 @@ Transfer normalized handoff state
 Jump to Kernel Entry Point
       │
       ▼
-Just Kernel
+Kernel
 ```
 
 Before transferring execution, the Boot Manager ensures that:
@@ -827,7 +829,7 @@ Source Code
 
 Related engineering documents include:
 
-- `kernel.md`
+- `kernel.md` (the architecture of the two kernels)
 - `security_system.md`
 - `layers.md`
 - `overview.md`
@@ -897,7 +899,7 @@ BootInfo
 Kernel Handoff
       │
       ▼
-Just Kernel
+Kernel
 ```
 
 Regardless of future improvements, the boot system continues to follow the same engineering philosophy:

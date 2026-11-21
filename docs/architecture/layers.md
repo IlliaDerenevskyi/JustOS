@@ -6,11 +6,17 @@ Shell
         │
 Kernel
         │
+State
+        │
 Scene
         │
 Layout
         │
+Policy
+        │
 Backend
+        │
+Renderer
         │
 DRM / Wayland / X11
         │

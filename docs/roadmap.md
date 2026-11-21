@@ -11,7 +11,7 @@
 
 # Milestone 0 — Boot Manager
 
-> **Status:** Planned
+> **Status:** Completed
 >
 > **Priority:** Critical
 
@@ -80,13 +80,13 @@ Platform-specific boot technologies may evolve independently from the engineerin
 
 See:
 
-- `docs/milestones/milestone0.md`
+- `docs/milestones/milestone0/milestone0.md`
 
 ---
 
 # Milestone 1 — Core
 
-> **Status:** Planned
+> **Status:** In Progress
 >
 > **Priority:** Critical
 
