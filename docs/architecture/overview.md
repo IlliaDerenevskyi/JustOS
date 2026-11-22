@@ -2,7 +2,15 @@ JustOS
 
 ↓
 
-Boot
+Applications (JSL)
+
+↓
+
+Services
+
+↓
+
+Shell
 
 ↓
 
@@ -34,8 +42,8 @@ Renderer
 
 ↓
 
-Shell
+DRM / Wayland / X11
 
 ↓
 
-Services
+Linux Kernel

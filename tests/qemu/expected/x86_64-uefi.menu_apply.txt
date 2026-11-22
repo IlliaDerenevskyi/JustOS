@@ -1,0 +1,20 @@
+# The boot program is built with the INTERACTIVE policy; the test sends keys (tests/qemu/run_observed_test.py, scenario
+# menu_apply): kernel parameters "quiet debug=1-x", boot logging off, verbose output on, safe mode on, then F10.
+# The kernel must receive exactly that, frozen, and the run must end with PASS.
+^JP\|stage3\.status=RUNNING$
+^JP\|stage3\.error=NONE$
+^JP\|stage3\.report=FINAL$
+^JP\|stage4\.manager=DECIDED$
+^JP\|stage4\.decision=CONTINUE_TO_KERNEL$
+^JP\|stage4\.selection=APPLIED$
+^JP\|stage4\.config\.state=FROZEN$
+^JP\|stage4\.config\.source=INTERACTIVE$
+^JP\|stage4\.config\.kernel_parameters=quiet debug=1-x$
+^JP\|stage4\.config\.boot_logging=no$
+^JP\|stage4\.config\.verbose_output=yes$
+^JP\|stage4\.config\.safe_mode=yes$
+^JP\|stage4\.config\.recovery_requested=no$
+^JP\|stage4\.config\.entry_count=0$
+# boot_logging is off: the summary was not shown.
+!text:^Boot status: RUNNING$
+^JP\|interaction\.state=COMPLETED$

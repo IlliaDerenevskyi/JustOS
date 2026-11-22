@@ -24,11 +24,16 @@ jobs:
 
       - name: Check that there is source code to build
         id: sources
-        run: ci/check_sources.sh
+        run: CI/check_sources.sh
 
+      # On main every build failure is a failure. On other branches a build
+      # that fails only because code of later stages is missing is reported as
+      # a warning ("build incomplete"); see CI/classify_build_log.sh.
       - name: Build and test
         if: steps.sources.outputs.has_sources == 'true'
-        run: ci/build_and_test.sh ${{ matrix.compiler }}
+        env:
+          CI_STRICT: ${{ github.ref == 'refs/heads/main' }}
+        run: CI/build_and_test.sh ${{ matrix.compiler }}
 
       - name: Report that build and test were skipped
         if: steps.sources.outputs.has_sources != 'true'

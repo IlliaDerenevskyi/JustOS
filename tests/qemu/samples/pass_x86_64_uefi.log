@@ -1,0 +1,52 @@
+BdsDxe: loading Boot0001 "UEFI Misc Device"
+JustOS boot: starting
+Architecture: x86_64
+Environment: UEFI
+Boot status: RUNNING
+Configuration: VALIDATED (DEFAULT)
+Menu: SKIPPED_POLICY
+JP|stage3.status=RUNNING
+JP|stage3.attempt=1
+JP|stage3.events=4
+JP|stage3.error=NONE
+JP|stage3.report=FINAL
+JP|stage4.manager=DECIDED
+JP|stage4.decision=CONTINUE_TO_KERNEL
+JP|stage4.selection=SKIPPED_POLICY
+JP|stage4.config.state=FROZEN
+JP|stage4.config.source=DEFAULT
+JP|stage4.config.kernel_parameters=
+JP|stage4.config.boot_logging=yes
+JP|stage4.config.verbose_output=no
+JP|stage4.config.safe_mode=no
+JP|stage4.config.recovery_requested=no
+JP|stage4.config.entry_count=0
+JP|machine=x86_64
+JP|environment=UEFI
+JP|current_stage=READY
+JP|stage2_result=SUCCESS
+JP|cpu.state=DETECTED
+JP|firmware.state=DETECTED
+JP|boot_device.state=DETECTED
+JP|hardware.state=DETECTED
+JP|cpu.logical_cores=4
+JP|memory.state=DETECTED
+JP|memory.regions=3
+JP|memory.region.0=0x0,0xa0000,RESERVED
+JP|memory.region.1=0x100000,0x7ff00000,USABLE
+JP|memory.region.2=0xfee00000,0x1000,MMIO
+JP|framebuffer.state=DETECTED
+JP|framebuffer.mode=1024x768,pitch=4096,BGR_888,base=0x80000000
+JP|kernel.validation=VALID
+JP|kernel.load=LOADED
+JP|kernel.segments=1
+JP|kernel.segment.0=0xffffffff80000000,0x100000,0x10,0x1000,R-X
+JP|kernel.entry=0xffffffff80000000
+JP|handoff.state=READY
+JP|handoff.page_table_root=0x7000
+JP|handoff.stack_pointer=0x104000
+JP|handoff.paging_enabled=yes
+JP|handoff.interrupts_disabled=yes
+JP|handoff.ownership_transferred=yes
+JP|interaction.state=COMPLETED
+JP|RESULT=PASS

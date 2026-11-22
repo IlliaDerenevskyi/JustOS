@@ -1,0 +1,54 @@
+# Expected "JP|" lines of the test kernel on x86_64-bios (see milestone0.md, serial protocol).
+^JP\|machine=x86_64$
+^JP\|environment=BIOS$
+# A BIOS machine may have no usable VBE mode: both outcomes are allowed, but not an error state.
+^JP\|framebuffer\.state=(DETECTED|NOT_DETECTED)$
+^JP\|current_stage=READY$
+^JP\|stage2_result=SUCCESS$
+^JP\|cpu\.state=DETECTED$
+^JP\|cpu\.logical_cores=[1-9][0-9]*$
+^JP\|firmware\.state=DETECTED$
+^JP\|boot_device\.state=DETECTED$
+^JP\|hardware\.state=DETECTED$
+^JP\|memory\.state=DETECTED$
+^JP\|memory\.regions=[1-9][0-9]*$
+^JP\|memory\.region\.0=0x[0-9a-f]+,0x[0-9a-f]+,[A-Z]+$
+^JP\|memory\.region\.[0-9]+=0x[0-9a-f]+,0x[0-9a-f]+,USABLE$
+^JP\|kernel\.validation=VALID$
+^JP\|kernel\.load=LOADED$
+^JP\|kernel\.segments=[1-9][0-9]*$
+^JP\|kernel\.segment\.0=0x[0-9a-f]+,0x[0-9a-f]+,0x[0-9a-f]+,0x[0-9a-f]+,[R-][W-][X-]$
+^JP\|kernel\.entry=0xffff[0-9a-f]{12}$
+^JP\|handoff\.state=READY$
+^JP\|handoff\.page_table_root=0x[1-9a-f][0-9a-f]*$
+^JP\|handoff\.stack_pointer=0x[1-9a-f][0-9a-f]*$
+^JP\|handoff\.paging_enabled=yes$
+^JP\|handoff\.interrupts_disabled=yes$
+^JP\|handoff\.ownership_transferred=yes$
+# The real Stage 3 and Stage 4 ran after Stage 2: the menu was skipped by the policy (the automatic tests build the
+# boot program with DEFAULT_ONLY), the default configuration was frozen, and the report is final.
+^JP\|stage3\.status=RUNNING$
+^JP\|stage3\.attempt=1$
+^JP\|stage3\.events=4$
+^JP\|stage3\.error=NONE$
+^JP\|stage3\.report=FINAL$
+^JP\|stage4\.manager=DECIDED$
+^JP\|stage4\.decision=CONTINUE_TO_KERNEL$
+^JP\|stage4\.selection=SKIPPED_POLICY$
+^JP\|stage4\.config\.state=FROZEN$
+^JP\|stage4\.config\.source=DEFAULT$
+^JP\|stage4\.config\.kernel_parameters=$
+^JP\|stage4\.config\.boot_logging=yes$
+^JP\|stage4\.config\.verbose_output=no$
+^JP\|stage4\.config\.safe_mode=no$
+^JP\|stage4\.config\.recovery_requested=no$
+^JP\|stage4\.config\.entry_count=0$
+# The summary that Stage 4 showed (boot_logging is on) went through the real Stage 3 text output.
+text:^Architecture: x86_64$
+text:^Environment: BIOS$
+text:^Boot status: RUNNING$
+text:^Configuration: VALIDATED \(DEFAULT\)$
+text:^Menu: SKIPPED_POLICY$
+# No item may be reported as failed or unknown.
+!^JP\|[a-z_.0-9]*=(FAILED|UNKNOWN|NOT_INITIALIZED)$
+!^JP\|RESULT=FAIL
