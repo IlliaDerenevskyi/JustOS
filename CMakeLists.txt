@@ -130,6 +130,9 @@ add_test(NAME test_check_serial COMMAND ${CMAKE_SOURCE_DIR}/tests/qemu/test_chec
 # also needs the boot application <build>/qemu/<platform>/boot.efi. While the
 # boot code does not exist, these tests fail with "not built yet".
 option(JP_ENABLE_QEMU_TESTS "Register the QEMU (level Q) tests" OFF)
+# Which platforms the QEMU tests are built and registered for. The default is all three. CI builds only the
+# platforms of the machine it runs on (x86_64 runner: x86_64-uefi, x86_64-bios; AArch64 runner: aarch64-uefi).
+set(JP_QEMU_PLATFORMS "x86_64-uefi;x86_64-bios;aarch64-uefi" CACHE STRING "Platforms of the QEMU tests (a list)")
 if(JP_ENABLE_QEMU_TESTS)
 	find_program(JP_CLANG clang REQUIRED)
 	find_program(JP_LLD ld.lld REQUIRED)
@@ -373,15 +376,27 @@ if(JP_ENABLE_QEMU_TESTS)
 		add_custom_target(boot_chain_x86_64-bios ALL DEPENDS ${app_dir}/boot_sector.bin ${app_dir}/loader.bin ${app_dir}/loader_interactive.bin)
 	endfunction()
 
-	jp_add_bios_boot_chain()
-	jp_add_boot_app(x86_64-uefi x86_64-pc-windows-msvc x86_64 JP_BOOT_ONLY_X86_64 DEFAULT_ONLY boot.efi)
-	jp_add_boot_app(x86_64-uefi x86_64-pc-windows-msvc x86_64 JP_BOOT_ONLY_X86_64 INTERACTIVE boot_interactive.efi)
-	jp_add_boot_app(aarch64-uefi aarch64-pc-windows-msvc aarch64 JP_BOOT_ONLY_AARCH64 DEFAULT_ONLY boot.efi)
-	jp_add_boot_app(aarch64-uefi aarch64-pc-windows-msvc aarch64 JP_BOOT_ONLY_AARCH64 INTERACTIVE boot_interactive.efi)
+	if("x86_64-bios" IN_LIST JP_QEMU_PLATFORMS)
+		jp_add_bios_boot_chain()
+	endif()
+	if("x86_64-uefi" IN_LIST JP_QEMU_PLATFORMS)
+		jp_add_boot_app(x86_64-uefi x86_64-pc-windows-msvc x86_64 JP_BOOT_ONLY_X86_64 DEFAULT_ONLY boot.efi)
+		jp_add_boot_app(x86_64-uefi x86_64-pc-windows-msvc x86_64 JP_BOOT_ONLY_X86_64 INTERACTIVE boot_interactive.efi)
+	endif()
+	if("aarch64-uefi" IN_LIST JP_QEMU_PLATFORMS)
+		jp_add_boot_app(aarch64-uefi aarch64-pc-windows-msvc aarch64 JP_BOOT_ONLY_AARCH64 DEFAULT_ONLY boot.efi)
+		jp_add_boot_app(aarch64-uefi aarch64-pc-windows-msvc aarch64 JP_BOOT_ONLY_AARCH64 INTERACTIVE boot_interactive.efi)
+	endif()
 
-	jp_add_qemu_test(x86_64-uefi x86_64-unknown-none-elf x86_64)
-	jp_add_qemu_test(x86_64-bios x86_64-unknown-none-elf x86_64)
-	jp_add_qemu_test(aarch64-uefi aarch64-unknown-none-elf aarch64)
+	foreach(jp_platform IN LISTS JP_QEMU_PLATFORMS)
+		if(jp_platform STREQUAL "x86_64-uefi" OR jp_platform STREQUAL "x86_64-bios")
+			jp_add_qemu_test(${jp_platform} x86_64-unknown-none-elf x86_64)
+		elseif(jp_platform STREQUAL "aarch64-uefi")
+			jp_add_qemu_test(${jp_platform} aarch64-unknown-none-elf aarch64)
+		else()
+			message(FATAL_ERROR "JP_QEMU_PLATFORMS: unknown platform '${jp_platform}'")
+		endif()
+	endforeach()
 endif()
 
 # The UEFI provider (private definitions live next to it, so the test adds that directory).

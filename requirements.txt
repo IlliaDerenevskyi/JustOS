@@ -18,8 +18,9 @@
 # itself. The exact compiler options (target names and so on) belong to
 # CMake and the specification, not to this file.
 #
-# GitHub Actions installs nothing from this file: the CI image already has
-# gcc, clang, cmake, and git.
+# GitHub Actions does not read this file. The host jobs use what the CI image
+# already has (gcc, clang, cmake, git). The QEMU jobs install the Debian/Ubuntu
+# packages (table at the end) with CI/install_qemu_deps.sh.
 
 # ---- Needed for every kind of work (CI scripts, build, git) ----
 
