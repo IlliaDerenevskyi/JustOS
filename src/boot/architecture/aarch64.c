@@ -329,6 +329,73 @@ static uint64_t device_block_attributes(void)
 	return ((uint64_t)JP_ATTR_DEVICE << JP_ATTR_SHIFT) | JP_DESC_AF | JP_DESC_PXN | JP_DESC_UXN;
 }
 
+/*
+ * The framebuffer inside one 2 MiB block that it does not fill completely (`low` up to `high` is the part of the
+ * framebuffer in this block). Replacing the whole block with device memory would make the other memory of the block
+ * non-executable, and the boot code can lie there (the firmware may allocate the framebuffer next to it), so:
+ *   - nothing is mapped in the block: the block becomes device memory, as for a full block;
+ *   - the block is an identity block of normal memory: it is split into 512 pages of 4 KiB that keep the attributes
+ *     of the block, and the pages of the framebuffer become device memory;
+ *   - the block already is that device block: nothing to do;
+ *   - the block is already a table (split before): the pages of the framebuffer are set in it.
+ * A page that is mapped to something else is a conflict.
+ */
+static bool map_framebuffer_part(JPBootContext *context, uint64_t block, uint64_t low, uint64_t high)
+{
+	uint64_t *table = table_for(context, ttbr0_root(context), block, JP_LEVEL_BLOCK);
+	uint64_t *entry;
+	uint64_t *pages;
+	uint64_t address;
+	uint64_t last;
+
+	if (table == NULL) {
+		return false;
+	}
+	entry = &table[table_index(block, JP_LEVEL_BLOCK)];
+	if ((*entry & JP_DESC_VALID) == 0) {
+		return map_identity_block(context, block, device_block_attributes(), true);
+	}
+	if ((*entry & JP_DESC_TYPE_MASK) == JP_DESC_BLOCK) {
+		uint64_t attributes = *entry & ~(JP_DESC_ADDRESS_MASK | JP_DESC_TYPE_MASK);
+		uint64_t next;
+
+		if ((*entry & JP_DESC_ADDRESS_MASK) != block) {
+			return false;
+		}
+		if (*entry == (block | JP_DESC_BLOCK | device_block_attributes())) {
+			return true;
+		}
+		next = allocate_table(context);
+		if (next == 0) {
+			return false;
+		}
+		pages = (uint64_t *)physical_pointer(next);
+		if (pages == NULL) {
+			return false;
+		}
+		for (address = block; address < block + JP_BLOCK_SIZE; address += JP_BOOT_PAGE_SIZE) {
+			pages[table_index(address, JP_LEVEL_PAGE)] = address | JP_DESC_TABLE_OR_PAGE | attributes;
+		}
+		*entry = next | JP_DESC_TABLE_OR_PAGE;
+	} else {
+		pages = (uint64_t *)physical_pointer(*entry & JP_DESC_ADDRESS_MASK);
+		if (pages == NULL) {
+			return false;
+		}
+	}
+	last = align_down(high + JP_BOOT_PAGE_SIZE - 1, JP_BOOT_PAGE_SIZE);
+	for (address = align_down(low, JP_BOOT_PAGE_SIZE); address < last; address += JP_BOOT_PAGE_SIZE) {
+		uint64_t *page = &pages[table_index(address, JP_LEVEL_PAGE)];
+		uint64_t wanted = address | JP_DESC_TABLE_OR_PAGE | device_block_attributes();
+
+		if ((*page & JP_DESC_VALID) != 0 && *page != wanted && (*page & JP_DESC_ADDRESS_MASK) != address) {
+			return false;     /* mapped to something else */
+		}
+		*page = wanted;
+	}
+	return true;
+}
+
 /* ---- Private helpers: entry state ---- */
 
 static bool entry_in_executable_segment(const JPKernelInfo *kernel, uint64_t entry)
@@ -467,7 +534,7 @@ JPBootResult jp_aarch64_setup_paging(JPBootContext *context)
 		return JP_BOOT_FAILED;
 	}
 
-	/* The framebuffer: device memory, never executable. */
+	/* The framebuffer: device memory, never executable (pages only where it shares a block with other memory). */
 	if (context->framebuffer.state == JP_DETECTION_STATE_DETECTED && context->framebuffer.base_address != 0) {
 		uint64_t size = (uint64_t)context->framebuffer.pitch * context->framebuffer.height;
 		uint64_t base = context->framebuffer.base_address;
@@ -480,7 +547,12 @@ JPBootResult jp_aarch64_setup_paging(JPBootContext *context)
 		first = align_down(base, JP_BLOCK_SIZE);
 		last = align_down(base + size + JP_BLOCK_SIZE - 1, JP_BLOCK_SIZE);
 		for (address = first; address < last; address += JP_BLOCK_SIZE) {
-			if (!map_identity_block(context, address, device_block_attributes(), true)) {
+			uint64_t low = base > address ? base : address;
+			uint64_t high = base + size < address + JP_BLOCK_SIZE ? base + size : address + JP_BLOCK_SIZE;
+			bool filled = low == address && high == address + JP_BLOCK_SIZE;
+
+			if (!(filled ? map_identity_block(context, address, device_block_attributes(), true)
+				     : map_framebuffer_part(context, address, low, high))) {
 				return JP_BOOT_FAILED;
 			}
 		}

@@ -633,6 +633,98 @@ static void test_setup_paging_maps_the_framebuffer(void)
 	assert(t.present && t.attr_index == 1 && !t.pxn);
 }
 
+/*
+ * A framebuffer that shares its 2 MiB blocks with other memory (the firmware allocated it next to the boot code)
+ * must not turn the whole block into non-executable device memory: the block is split, and only the pages of the
+ * framebuffer become device memory. (The first QEMU run with another firmware faulted right after the MMU was
+ * switched on, because the boot code was in such a block.)
+ */
+static void test_framebuffer_sharing_a_block_splits_it(void)
+{
+	JPBootContext c;
+	JPBootContext reference;
+	Translation t;
+	const uint64_t base = SIM_BASE + 0x700000ULL;               /* in the middle of the block that starts at 0x600000 */
+
+	make_context(&reference);
+	assert(jp_aarch64_setup_paging(&reference) == JP_BOOT_SUCCESS);
+
+	make_context(&c);
+	c.framebuffer.state = JP_DETECTION_STATE_DETECTED;
+	c.framebuffer.base_address = base;
+	c.framebuffer.width = 1024;
+	c.framebuffer.height = 1000;                                 /* 0x3E8000 bytes: ends inside the block of 0xA00000 */
+	c.framebuffer.pitch = 4096;
+	assert(jp_aarch64_setup_paging(&c) == JP_BOOT_SUCCESS);
+
+	/* First, partly covered block: the part before the framebuffer is still ordinary, executable memory. */
+	t = walk(&c, SIM_BASE + 0x600000ULL + 0x10);
+	assert(t.present && !t.block && t.physical == SIM_BASE + 0x600000ULL + 0x10);
+	assert(t.attr_index == 1 && !t.pxn && !t.read_only);
+	t = walk(&c, base - 1);
+	assert(t.present && !t.block && t.attr_index == 1 && !t.pxn);
+	/* The framebuffer pages of that block are device memory, never executable. */
+	t = walk(&c, base);
+	assert(t.present && !t.block && t.physical == base && t.attr_index == 0 && t.pxn && t.uxn);
+	t = walk(&c, SIM_BASE + 0x7FFFFFULL);
+	assert(t.present && t.attr_index == 0 && t.pxn && t.uxn);
+
+	/* The block that the framebuffer fills completely stays one device block. */
+	t = walk(&c, SIM_BASE + 0x800000ULL + 0x10);
+	assert(t.present && t.block && t.attr_index == 0 && t.pxn && t.uxn);
+	t = walk(&c, SIM_BASE + 0x9FFFFFULL);
+	assert(t.present && t.block && t.attr_index == 0 && t.pxn && t.uxn);
+	/* The last framebuffer byte, in the last, partly covered block. */
+	t = walk(&c, base + 0x3E8000ULL - 1);
+	assert(t.present && !t.block && t.attr_index == 0 && t.pxn && t.uxn);
+	/* Last, partly covered block: the part after the framebuffer is ordinary memory again. */
+	t = walk(&c, base + 0x3E8000ULL);
+	assert(t.present && !t.block && t.attr_index == 1 && !t.pxn);
+	t = walk(&c, SIM_BASE + 0xBFF000ULL);
+	assert(t.present && t.attr_index == 1 && !t.pxn);
+
+	/* Memory next to the three blocks is not touched. */
+	t = walk(&c, SIM_BASE + 0x400000ULL);
+	assert(t.present && t.block && t.attr_index == 1 && !t.pxn);
+	t = walk(&c, SIM_BASE + 0xC00000ULL);
+	assert(t.present && t.block && t.attr_index == 1 && !t.pxn);
+
+	/* The two splits used two pages of the pool. */
+	assert(c.handoff.page_table_memory_used == reference.handoff.page_table_memory_used + 2);
+
+	/* A framebuffer inside a device block (an MMIO region) leaves the block as it is: nothing to split. */
+	make_context(&c);
+	c.framebuffer.state = JP_DETECTION_STATE_DETECTED;
+	c.framebuffer.base_address = 0x08100000ULL;
+	c.framebuffer.width = 640;
+	c.framebuffer.height = 480;
+	c.framebuffer.pitch = 2560;
+	assert(jp_aarch64_setup_paging(&c) == JP_BOOT_SUCCESS);
+	t = walk(&c, 0x08100000ULL + 0x10);
+	assert(t.present && t.block && t.attr_index == 0 && t.pxn && t.uxn);
+
+	/* With the pool full, a split that is needed fails the call (no half-made state is reported as success). */
+	make_context(&c);
+	c.framebuffer.state = JP_DETECTION_STATE_DETECTED;
+	c.framebuffer.base_address = base;
+	c.framebuffer.width = 1024;
+	c.framebuffer.height = 1000;
+	c.framebuffer.pitch = 4096;
+	assert(jp_aarch64_setup_paging(&c) == JP_BOOT_SUCCESS);
+	make_context(&c);
+	c.framebuffer.state = JP_DETECTION_STATE_DETECTED;
+	c.framebuffer.base_address = base;
+	c.framebuffer.width = 1024;
+	c.framebuffer.height = 1000;
+	c.framebuffer.pitch = 4096;
+	c.handoff.page_table_memory_base = expected_pool_base();
+	c.handoff.page_table_memory_size = POOL_BYTES;
+	c.handoff.page_table_root = expected_pool_base();
+	c.handoff.page_table_memory_used = JP_AARCH64_TABLE_POOL_PAGES - 1;   /* one page left: the second split cannot be made */
+	assert(jp_aarch64_setup_paging(&c) == JP_BOOT_FAILED);
+	assert(!c.handoff.paging_enabled);
+}
+
 static void test_setup_paging_conflicts_and_limits(void)
 {
 	JPBootContext c;
@@ -838,6 +930,7 @@ int main(void)
 	test_identity_map_follows_the_regions();
 	test_regions_that_share_a_block_are_accepted();
 	test_setup_paging_maps_the_framebuffer();
+	test_framebuffer_sharing_a_block_splits_it();
 	test_setup_paging_conflicts_and_limits();
 	test_prepare_entry();
 	test_prepare_entry_refusals();

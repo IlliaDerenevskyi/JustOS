@@ -560,6 +560,76 @@ static void test_framebuffer_inside_the_identity_map_changes_its_attributes(void
 	assert(t.present && !t.cache_disabled && !t.no_execute);
 }
 
+/*
+ * A framebuffer that shares its 2 MiB pages with other memory must not turn the whole page into non-executable,
+ * cache-disabled memory: the page is split, and only the 4 KiB pages of the framebuffer change.
+ */
+static void test_framebuffer_sharing_a_page_splits_it(void)
+{
+	JPBootContext c;
+	JPBootContext reference;
+	Translation t;
+	const uint64_t base = SIM_BASE + 0x700000ULL;               /* in the middle of the page that starts at 0x600000 */
+
+	make_context(&reference);
+	assert(jp_x86_64_setup_paging(&reference) == JP_BOOT_SUCCESS);
+
+	make_context(&c);
+	c.framebuffer.state = JP_DETECTION_STATE_DETECTED;
+	c.framebuffer.base_address = base;
+	c.framebuffer.width = 1024;
+	c.framebuffer.height = 1000;                                 /* 0x3E8000 bytes: ends inside the page of 0xA00000 */
+	c.framebuffer.pitch = 4096;
+	assert(jp_x86_64_setup_paging(&c) == JP_BOOT_SUCCESS);
+
+	/* The part of the first page before the framebuffer is still ordinary, executable memory (4 KiB pages now). */
+	t = translate(c.handoff.page_table_root, SIM_BASE + 0x600000ULL + 0x10);
+	assert(t.present && !t.large && t.physical == SIM_BASE + 0x600000ULL + 0x10);
+	assert(t.writable && !t.no_execute && !t.cache_disabled);
+	t = translate(c.handoff.page_table_root, base - 1);
+	assert(t.present && !t.large && !t.no_execute && !t.cache_disabled);
+	/* The framebuffer pages are writable, no-execute, cache-disabled. */
+	t = translate(c.handoff.page_table_root, base);
+	assert(t.present && !t.large && t.physical == base && t.writable && t.no_execute && t.cache_disabled);
+	t = translate(c.handoff.page_table_root, SIM_BASE + 0x7FFFFFULL);
+	assert(t.present && t.no_execute && t.cache_disabled);
+
+	/* The page between them is filled by the framebuffer: one large page of that kind. */
+	t = translate(c.handoff.page_table_root, SIM_BASE + 0x800000ULL + 0x10);
+	assert(t.present && t.large && t.no_execute && t.cache_disabled && t.writable);
+	t = translate(c.handoff.page_table_root, SIM_BASE + 0x9FFFFFULL);
+	assert(t.present && t.large && t.no_execute && t.cache_disabled);
+	/* The last framebuffer byte, in the last, partly covered page. */
+	t = translate(c.handoff.page_table_root, base + 0x3E8000ULL - 1);
+	assert(t.present && !t.large && t.no_execute && t.cache_disabled);
+	/* The part after the framebuffer is ordinary memory again. */
+	t = translate(c.handoff.page_table_root, base + 0x3E8000ULL);
+	assert(t.present && !t.large && !t.no_execute && !t.cache_disabled);
+	t = translate(c.handoff.page_table_root, SIM_BASE + 0xBFF000ULL);
+	assert(t.present && !t.no_execute && !t.cache_disabled);
+
+	/* Pages next to the three pages are not touched. */
+	t = translate(c.handoff.page_table_root, SIM_BASE + 0x400000ULL);
+	assert(t.present && t.large && !t.no_execute && !t.cache_disabled);
+	t = translate(c.handoff.page_table_root, SIM_BASE + 0xC00000ULL);
+	assert(t.present && t.large && !t.no_execute && !t.cache_disabled);
+
+	/* The two splits used two pages of the pool. */
+	assert(c.handoff.page_table_memory_used == reference.handoff.page_table_memory_used + 2);
+
+	/* With the pool full, a split that is needed fails the call. */
+	make_context(&c);
+	c.framebuffer.state = JP_DETECTION_STATE_DETECTED;
+	c.framebuffer.base_address = base;
+	c.framebuffer.width = 1024;
+	c.framebuffer.height = 1000;
+	c.framebuffer.pitch = 4096;
+	assert(jp_x86_64_map_segment(&c, 0) == JP_BOOT_SUCCESS);      /* creates the pool */
+	c.handoff.page_table_memory_used = JP_X86_64_TABLE_POOL_PAGES - 1;
+	assert(jp_x86_64_setup_paging(&c) == JP_BOOT_FAILED);
+	assert(!c.handoff.paging_enabled);
+}
+
 static void test_setup_paging_identity_and_gdt(void)
 {
 	JPBootContext c;
@@ -891,6 +961,7 @@ int main(void)
 	test_setup_paging_identity_and_gdt();
 	test_setup_paging_without_segments_mapped_before();
 	test_setup_paging_maps_the_framebuffer();
+	test_framebuffer_sharing_a_page_splits_it();
 	test_setup_paging_conflicts_and_limits();
 	test_identity_map_follows_the_regions();
 	test_regions_that_share_a_page_are_accepted();
