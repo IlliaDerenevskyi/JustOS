@@ -310,6 +310,75 @@ static bool map_identity_large_page(JPBootContext *context, uint64_t address, ui
 	return true;
 }
 
+/*
+ * The framebuffer inside one 2 MiB page that it does not fill completely (`low` up to `high` is the part of the
+ * framebuffer in this page). Replacing the whole page with a no-execute, cache-disabled page would make the other
+ * memory of the page non-executable, and the boot code can lie there (the firmware may allocate the framebuffer next
+ * to it), so:
+ *   - nothing is mapped in the page: it becomes a framebuffer page, as for a full page;
+ *   - the page is an identity page of ordinary memory: it is split into 512 pages of 4 KiB that keep the attributes
+ *     of the page, and the pages of the framebuffer become writable, no-execute, cache-disabled;
+ *   - the page already has the framebuffer attributes: nothing to do;
+ *   - the entry is already a page table (split before): the pages of the framebuffer are set in it.
+ * A page that is mapped to something else is a conflict.
+ */
+static bool map_framebuffer_part(JPBootContext *context, uint64_t block, uint64_t low, uint64_t high)
+{
+	const uint64_t frame_bits = JP_PTE_WRITABLE | JP_PTE_NO_EXECUTE | JP_PTE_CACHE_DISABLE;
+	uint64_t *directory = table_for(context, block, JP_LEVEL_PD);
+	uint64_t *entry;
+	uint64_t *pages;
+	uint64_t address;
+	uint64_t last;
+
+	if (directory == NULL) {
+		return false;
+	}
+	entry = &directory[table_index(block, JP_LEVEL_PD)];
+	if ((*entry & JP_PTE_PRESENT) == 0) {
+		return map_identity_large_page(context, block, frame_bits, true);
+	}
+	if ((*entry & JP_PTE_LARGE) != 0) {
+		uint64_t bits = *entry & ~(JP_PTE_ADDRESS_MASK | JP_PTE_LARGE);
+		uint64_t next;
+
+		if ((*entry & JP_PTE_ADDRESS_MASK) != block) {
+			return false;
+		}
+		if (*entry == (block | JP_PTE_PRESENT | JP_PTE_LARGE | frame_bits)) {
+			return true;
+		}
+		next = allocate_table(context);
+		if (next == 0) {
+			return false;
+		}
+		pages = (uint64_t *)physical_pointer(next);
+		if (pages == NULL) {
+			return false;
+		}
+		for (address = block; address < block + JP_LARGE_PAGE_SIZE; address += JP_BOOT_PAGE_SIZE) {
+			pages[table_index(address, 0)] = address | bits;
+		}
+		*entry = next | JP_PTE_PRESENT | JP_PTE_WRITABLE;
+	} else {
+		pages = (uint64_t *)physical_pointer(*entry & JP_PTE_ADDRESS_MASK);
+		if (pages == NULL) {
+			return false;
+		}
+	}
+	last = align_down(high + JP_BOOT_PAGE_SIZE - 1, JP_BOOT_PAGE_SIZE);
+	for (address = align_down(low, JP_BOOT_PAGE_SIZE); address < last; address += JP_BOOT_PAGE_SIZE) {
+		uint64_t *page = &pages[table_index(address, 0)];
+		uint64_t wanted = address | JP_PTE_PRESENT | frame_bits;
+
+		if ((*page & JP_PTE_PRESENT) != 0 && *page != wanted && (*page & JP_PTE_ADDRESS_MASK) != address) {
+			return false;     /* mapped to something else */
+		}
+		*page = wanted;
+	}
+	return true;
+}
+
 static void fill_descriptor_table(const JPBootContext *context)
 {
 	uint64_t *gdt = pool_page(context, JP_GDT_PAGE);
@@ -465,7 +534,7 @@ JPBootResult jp_x86_64_setup_paging(JPBootContext *context)
 		return JP_BOOT_FAILED;
 	}
 
-	/* The framebuffer: writable, no execute, cache disabled. */
+	/* The framebuffer: writable, no execute, cache disabled (pages only where it shares a 2 MiB page with other memory). */
 	if (context->framebuffer.state == JP_DETECTION_STATE_DETECTED && context->framebuffer.base_address != 0) {
 		uint64_t size = (uint64_t)context->framebuffer.pitch * context->framebuffer.height;
 		uint64_t base = context->framebuffer.base_address;
@@ -478,8 +547,13 @@ JPBootResult jp_x86_64_setup_paging(JPBootContext *context)
 		first = align_down(base, JP_LARGE_PAGE_SIZE);
 		last = align_down(base + size + JP_LARGE_PAGE_SIZE - 1, JP_LARGE_PAGE_SIZE);
 		for (address = first; address < last; address += JP_LARGE_PAGE_SIZE) {
-			if (!map_identity_large_page(context, address,
-				JP_PTE_WRITABLE | JP_PTE_NO_EXECUTE | JP_PTE_CACHE_DISABLE, true)) {
+			uint64_t low = base > address ? base : address;
+			uint64_t high = base + size < address + JP_LARGE_PAGE_SIZE ? base + size : address + JP_LARGE_PAGE_SIZE;
+			bool filled = low == address && high == address + JP_LARGE_PAGE_SIZE;
+
+			if (!(filled ? map_identity_large_page(context, address,
+					JP_PTE_WRITABLE | JP_PTE_NO_EXECUTE | JP_PTE_CACHE_DISABLE, true)
+				     : map_framebuffer_part(context, address, low, high))) {
 				return JP_BOOT_FAILED;
 			}
 		}

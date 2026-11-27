@@ -12,6 +12,8 @@ This is the full sequence, in order. It follows `rules.md` (Rules 16, 19, 24, 25
    ```bash
    rm -rf /tmp/ci && mkdir /tmp/ci && git archive HEAD | tar -x -C /tmp/ci
    (cd /tmp/ci && CI/build_and_test.sh gcc && CI/build_and_test.sh clang)
+   # the QEMU level, exactly as the two QEMU jobs of CI run it (needs the firmware, see requirements.txt):
+   (cd /tmp/ci && CI/qemu_tests.sh x86_64-uefi x86_64-bios && CI/qemu_tests.sh aarch64-uefi)
    ```
    Also run `git status` and look at every `??` line: each one is either a file that must be committed, or a file that is meant to stay out.
 6. **Stage Report and review** (Rule 26): write the report, make the diff since the previous `Stage <N-1>:` commit (`git diff <previous commit>`), and pass the architecture review.
