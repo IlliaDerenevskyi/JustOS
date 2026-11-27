@@ -25,7 +25,7 @@ arch="$1"
 common=(clang lld mtools dosfstools python3 python3-pil fonts-dejavu-core)
 case "$arch" in
 x86_64) packages=("${common[@]}" qemu-system-x86 ovmf) ;;
-aarch64) packages=("${common[@]}" qemu-system-arm qemu-efi-aarch64) ;;
+aarch64) packages=("${common[@]}" qemu-system-arm qemu-efi-aarch64 ipxe-qemu) ;;
 *)
 	echo "unknown architecture: $arch" >&2
 	exit 2

@@ -6,6 +6,8 @@
  * read back by a decoder written here, independent of paging.c.
  */
 
+#define _GNU_SOURCE   /* MAP_ANONYMOUS and MAP_FIXED_NOREPLACE, used by fixed_context.h */
+
 #include <assert.h>
 #include <string.h>
 
@@ -13,6 +15,7 @@
 #include "justos/kernel/memory.h"
 #include "justos/kernel/paging.h"
 #include "paging_hw.h"
+#include "../../support/fixed_context.h"
 
 #define PAGE 0x1000ull
 #define LARGE 0x200000ull
@@ -119,7 +122,9 @@ uint32_t jp_kernel_cpu_physical_address_bits(void)
 #define SEG1 0x4001000ull                 /* rodata: read */
 #define SEG2 0x4002000ull                 /* data: read and write, 0x1800 bytes */
 
-static JPBootContext context;
+/* The context lives at a fixed address (see fixed_context.h); the name "context" stands for the object. */
+static JPBootContext *context_object;
+#define context (*context_object)
 
 static uint64_t virtual_base(void)
 {
@@ -1107,6 +1112,7 @@ static void test_validate_structure(void)
 
 int main(void)
 {
+	context_object = jp_test_map_context(sizeof *context_object);
 	test_x86_success();
 	test_arm_success();
 	test_deterministic();

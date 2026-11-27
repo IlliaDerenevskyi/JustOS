@@ -4,12 +4,15 @@
  * validate_ownership. The processor hook is replaced by a fake.
  */
 
+#define _GNU_SOURCE   /* MAP_ANONYMOUS and MAP_FIXED_NOREPLACE, used by fixed_context.h */
+
 #include <assert.h>
 #include <stdint.h>
 #include <string.h>
 
 #include "cpu_regs.h"
 #include "justos/kernel/memory.h"
+#include "../../support/fixed_context.h"
 
 #define PAGE 0x1000ull
 #define MIB 0x100000ull
@@ -21,8 +24,10 @@ uint32_t jp_kernel_cpu_physical_address_bits(void)
 	return fake_address_bits;
 }
 
-/* The context must be a real object: its own address is a range of the map. */
-static _Alignas(4096) JPBootContext context;
+/* The context must be a real object: its own address is a range of the map. It lives at a fixed address (see
+ * fixed_context.h), and the name "context" stands for the object, so the tests read as before. */
+static JPBootContext *context_object;
+#define context (*context_object)
 
 /* Synthetic layout. */
 #define LOW_BASE (0x1000ull)
@@ -892,6 +897,7 @@ static void test_validate_detects_damage(void)
 
 int main(void)
 {
+	context_object = jp_test_map_context(sizeof *context_object);
 	test_initialize_checks();
 	test_initialize_map_errors();
 	test_initialize_limits();

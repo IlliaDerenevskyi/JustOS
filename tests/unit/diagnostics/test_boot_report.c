@@ -121,7 +121,9 @@ static void test_idempotent(void)
 	fail_with(JP_BOOT_FAILED);
 	assert(jp_boot_report_finalize(&context) == JP_BOOT_SUCCESS);
 	memcpy(&copy, &context, sizeof copy);
-	first = report();
+	/* The stored report is copied with memcpy. A copy by value (as report() makes) may leave the padding bytes of the
+	 * structure in any state, and the compilers differ in that (gcc on AArch64 does), so a memcmp of such a copy is not a test. */
+	memcpy(&first, &context.stage3.report, sizeof first);
 	assert(jp_boot_report_finalize(&context) == JP_BOOT_SUCCESS);
 	assert(memcmp(&copy, &context, sizeof copy) == 0);
 	assert(memcmp(&first, &context.stage3.report, sizeof first) == 0);
