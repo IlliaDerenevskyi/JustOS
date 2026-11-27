@@ -183,7 +183,7 @@ if(JP_ENABLE_QEMU_TESTS)
 			COMMAND ${CMAKE_COMMAND} -E make_directory ${out_dir}
 			COMMAND ${JP_CLANG} --target=${target} -std=c17 -ffreestanding
 				-fno-pic -fno-stack-protector -O2 ${JP_TEST_KERNEL_ARCH_FLAGS_${arch}} -Wall -Wextra -Werror -DJP_TEST_KERNEL_NO_WAIT=1
-				-fuse-ld=lld -nostdlib -Wl,-z,max-page-size=4096
+				-fuse-ld=lld -nostdlib -Wl,--no-pie -Wl,-z,max-page-size=4096
 				-Wl,-T,${JP_TEST_KERNEL_DIR}/kernel_${arch}.ld
 				-I${CMAKE_SOURCE_DIR}/include -I${JP_TEST_KERNEL_DIR}
 				${JP_TEST_KERNEL_SOURCES}
@@ -216,7 +216,7 @@ if(JP_ENABLE_QEMU_TESTS)
 			COMMAND ${CMAKE_COMMAND} -E make_directory ${out_dir}
 			COMMAND ${JP_CLANG} --target=${target} -std=c17 -ffreestanding
 				-fno-pic -fno-stack-protector -O2 ${JP_TEST_KERNEL_ARCH_FLAGS_${arch}} -Wall -Wextra -Werror -DJP_TEST_KERNEL_NO_WAIT=1
-				-fuse-ld=lld -nostdlib -Wl,-z,max-page-size=4096
+				-fuse-ld=lld -nostdlib -Wl,--no-pie -Wl,-z,max-page-size=4096
 				-Wl,-T,${JP_TEST_KERNEL_DIR}/kernel_${arch}.ld
 				-I${CMAKE_SOURCE_DIR}/include -I${JP_TEST_KERNEL_DIR}
 				${JP_TEST_KERNEL_SOURCES}
@@ -335,7 +335,7 @@ if(JP_ENABLE_QEMU_TESTS)
 		set(app_dir ${CMAKE_BINARY_DIR}/qemu/x86_64-bios)
 		set(plat ${JP_BOOT_SRC}/platform)
 		set(common_flags --target=x86_64-unknown-none-elf -ffreestanding -fno-pic -fno-pie
-			-fuse-ld=lld -nostdlib -static)
+			-fuse-ld=lld -nostdlib -static -Wl,--no-pie)
 		set(loader_sources
 			${plat}/bios_loader.S ${plat}/bios_entry.c ${plat}/bios.c
 			${JP_BOOT_SRC}/boot_pipeline.c ${JP_BOOT_SRC}/boot_environment.c ${JP_BOOT_SRC}/hardware.c

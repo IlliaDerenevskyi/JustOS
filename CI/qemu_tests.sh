@@ -36,5 +36,16 @@ cmake --build "$build_dir" --parallel
 echo "::endgroup::"
 
 echo "::group::QEMU tests (${platforms})"
-ctest --test-dir "$build_dir" -L qemu -LE kvm --output-on-failure
+status=0
+ctest --test-dir "$build_dir" -L qemu -LE kvm --output-on-failure || status=$?
+if [ "$status" -ne 0 ]; then
+	# The run scripts keep the output of QEMU itself (its errors) in run*.log; show it, because CI cannot open the files.
+	for log in "$build_dir"/qemu/*/run*.log; do
+		[ -f "$log" ] || continue
+		echo "::group::QEMU output: ${log#"$build_dir"/qemu/}"
+		tail -n 30 "$log"
+		echo "::endgroup::"
+	done
+fi
 echo "::endgroup::"
+exit "$status"
